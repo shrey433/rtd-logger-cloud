@@ -80,10 +80,10 @@ def ensure_thing_with_cert(iot, thing: str, policy: str, out: str) -> None:
     iot.attach_thing_principal(thingName=thing, principal=created["certificateArn"])
     cert_path = os.path.join(out, f"{thing}.cert.pem")
     key_path = os.path.join(out, f"{thing}.private.key")
-    with open(cert_path, "w") as f:
+    with open(cert_path, "w", newline="\n") as f:
         f.write(created["certificatePem"])
     fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", newline="\n") as f:
         f.write(created["keyPair"]["PrivateKey"])
     print(f"thing {thing}: certificate saved to {cert_path} and key to {key_path}")
 

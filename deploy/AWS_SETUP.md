@@ -1,9 +1,9 @@
 # AWS setup: IoT Core + one Lightsail server (Mumbai, ap-south-1)
 
-Status: `aws_iot_setup.py` and the Compose files are written but have not been run against AWS yet. Check each step as you go.
+Status: all of this has been run. The server is a t3.micro EC2 instance paid from the AWS Free plan credits (the plan expires 2026-12-02; after that the account must be upgraded or the resources go away).
 
 ```
-logger --MQTT/TLS 8883--> AWS IoT Core --MQTT/TLS--> app (Lightsail) --HTTPS + live stream--> your browser
+logger --MQTT/TLS 8883--> AWS IoT Core --MQTT/TLS--> app (EC2) --HTTPS + live stream--> your browser
                                                        SQLite on a volume
 ```
 
@@ -29,13 +29,12 @@ A second logger later is the same command with another `--device` name; the shar
 
 ## 2. The server
 
-1. Lightsail: create an instance in ap-south-1 (Ubuntu 22.04, the 1 GB plan is enough), attach a **static IP**, and open ports 80 and 443 in its firewall.
-2. Install Docker: `curl -fsSL https://get.docker.com | sh`.
-3. Get the code onto the server. The repo is private, so add a read-only deploy key under the repo's Settings, Deploy keys, or copy the folder with `scp`.
-4. Copy `deploy/certs/` to the server (`scp -r`), keeping it out of git.
-5. `cp deploy/.env.example deploy/.env` and fill it in. With no domain, `DOMAIN` is the static IP with dashes plus `.sslip.io` (for 13.232.10.20 that is `13-232-10-20.sslip.io`).
-6. `cd deploy && docker compose up -d --build`.
-7. Check `https://<DOMAIN>/healthz` shows `"mqtt":"subscribed"`, then open `https://<DOMAIN>/` and sign in with the dashboard user and password.
+1. Create the instance: `python deploy/aws_ec2_setup.py --keys-csv rtd-developer_accessKeys.csv`. It makes a security group (80 and 443 open to all, SSH from one address), an SSH key pair saved in `deploy/certs/`, a t3.micro Ubuntu 22.04 instance that installs Docker on first boot, and an Elastic IP.
+2. Create `deploy/.env` from `deploy/.env.example`. With no domain, `DOMAIN` is the Elastic IP with dashes plus `.sslip.io` (for 13.232.10.20 that is `13-232-10-20.sslip.io`).
+3. Ship and start it: `bash deploy/deploy.sh <elastic-ip>`. It sends the committed code (`git archive`), the app's certificate and `deploy/.env`, then runs `docker compose up -d --build`. Run it again after each change you commit.
+4. Check `https://<DOMAIN>/healthz` shows `"mqtt":"subscribed"`, then open `https://<DOMAIN>/` and sign in with the dashboard user and password.
+
+SSH note: the security group only lets in the address you give it, and the address AWS sees for SSH can differ from what `checkip.amazonaws.com` reports (carrier-grade NAT). If SSH times out, check which address the server sees (`echo $SSH_CLIENT` over a temporary rule) and allow that one.
 
 ## 3. Quick check from your PC, before the firmware speaks MQTT
 
