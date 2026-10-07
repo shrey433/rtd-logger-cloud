@@ -59,17 +59,18 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def insert_readings(device_id: str, fw_version: str, types: List[str],
-                    rows: List[tuple], backlog: Optional[int] = None) -> int:
-    """rows: (ts, [8 floats or None]). Returns how many were new."""
+                    rows: List[tuple], backlog: Optional[int] = None) -> List[tuple]:
+    """rows: (ts, [8 floats or None]). Returns the rows that were new (re-sent ones are skipped)."""
     now = int(time.time())
-    inserted = 0
+    inserted: List[tuple] = []
     placeholders = ",".join("?" * (CHANNELS + 3))
     sql = (f"INSERT OR IGNORE INTO readings (device_id, ts, {', '.join(COLS)}, received_at) "
            f"VALUES ({placeholders})")
     with connect() as conn:
         for ts, values in rows:
             cur = conn.execute(sql, (device_id, ts, *values, now))
-            inserted += cur.rowcount
+            if cur.rowcount:
+                inserted.append((ts, values))
         conn.execute(
             """INSERT INTO devices (device_id, fw_version, types, first_seen, last_seen, backlog)
                VALUES (?, ?, ?, ?, ?, ?)

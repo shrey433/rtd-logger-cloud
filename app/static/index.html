@@ -188,9 +188,15 @@
     device: store.get("device", null),
     range: store.get("range", 21600),
     hidden: new Set(store.get("hidden", [])),
-    types: [], data: null, step: 10, latest: null, previous: null, stats: null,
-    hover: null, zoomed: false, u: null, serverTime: 0
+    types: [], data: null, step: 10, bucket: 1, latest: null, previous: null, stats: null,
+    recent: [], deviceInfo: null,
+    hover: null, zoomed: false, u: null, serverTime: 0, skew: 0
   };
+  var live = {es: null, open: false, device: null, lastFull: 0};
+
+  // The server's clock, advanced locally between messages so "last seen" keeps ageing.
+  function syncClock(serverTime){ state.serverTime = serverTime; state.skew = serverTime - Date.now()/1000; }
+  function serverNow(){ return Date.now()/1000 + state.skew; }
 
   function fmt(v, d){ return v === null || v === undefined ? "—" : v.toFixed(d === undefined ? 2 : d); }
   function pad(n){ return (n < 10 ? "0" : "") + n; }
@@ -349,11 +355,12 @@
   }
 
   function paintStatus(device){
-    var age = state.serverTime - device.last_seen, s = "online", label = "Online";
+    state.deviceInfo = device;
+    var age = serverNow() - device.last_seen, s = "online", label = "Online";
     if (age > 300) { s = "offline"; label = "Offline · last seen " + ago(age); }
     else if (age > 35) { s = "stale"; label = "Delayed · " + ago(age); }
     $("#pill").dataset.state = s;
-    $("#pilltext").textContent = label;
+    $("#pilltext").textContent = label + (s === "online" && live.open ? " · live" : "");
     var queued = device.backlog, chip = $("#backlog");
     chip.hidden = !(queued > 0);
     if (queued > 0) {  // the logger sends one queued row per 10 s cycle, so this is also the catch-up time
@@ -366,16 +373,78 @@
       "  ·  first seen " + stamp(device.first_seen);
   }
 
+  function paintSpread(){
+    var vals = state.latest ? state.latest.values.filter(function(v){ return v !== null; }) : [];
+    $("#spread").textContent = vals.length > 1 ?
+      (Math.max.apply(null, vals) - Math.min.apply(null, vals)).toFixed(2) + " °C" : "—";
+  }
+
+  /* ---------- live updates (server-sent events) ---------- */
+  var refreshTimer = null;
+  function scheduleRefresh(ms){
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(function(){ refreshTimer = null; refresh(); }, ms);
+  }
+
+  function appendPoint(row){
+    var d = state.data, x = d[0], k;
+    if (x.length && row.ts <= x[x.length-1]) return;
+    if (x.length && row.ts - x[x.length-1] > state.step * 2.5) {  // the logger was offline: leave a gap
+      x.push(x[x.length-1] + state.step);
+      for (k = 1; k < d.length; k++) d[k].push(null);
+    }
+    x.push(row.ts);
+    for (k = 0; k < CH; k++) d[k+1].push(row.values[k]);
+    while (x.length > 2 && x[0] < row.ts - state.range) for (k = 0; k < d.length; k++) d[k].shift();
+    state.hover = null;
+    drawChart();
+  }
+
+  function onLive(ev){
+    if (!state.deviceInfo || ev.device_id !== state.device) { refresh(); return; }
+    syncClock(ev.server_time);
+    var info = state.deviceInfo;
+    info.last_seen = ev.server_time; info.backlog = ev.backlog; info.fw_version = ev.fw_version || info.fw_version;
+    var row = {ts: ev.ts, values: ev.values};
+    var newest = !state.latest || ev.ts > state.latest.ts;
+    if (newest) {
+      state.previous = state.latest; state.latest = row;
+      if (state.stats) row.values.forEach(function(v, k){
+        if (v === null) return;
+        var s = state.stats;
+        s.min[k] = s.min[k] === null ? v : Math.min(s.min[k], v);
+        s.max[k] = s.max[k] === null ? v : Math.max(s.max[k], v);
+      });
+    }
+    state.recent = [row].concat(state.recent.filter(function(r){ return r.ts !== row.ts; }))
+      .sort(function(a, b){ return b.ts - a.ts; }).slice(0, 15);
+    paintTable(state.recent);
+    if (newest && state.bucket === 1 && state.data) appendPoint(row);
+    else if (ev.ts > serverNow() - state.range) scheduleRefresh(newest ? 20000 : 4000);  // backfilled or averaged view
+    paintStatus(info); paintTiles(); paintSpread();
+    $("#updated").textContent = "updated " + hms(Date.now()/1000);
+  }
+
+  function connectLive(){
+    if (live.es) live.es.close();
+    live.device = state.device;
+    var es = new EventSource("/api/stream" + (state.device ? "?device_id=" + encodeURIComponent(state.device) : ""));
+    es.onopen = function(){ live.open = true; if (state.deviceInfo) paintStatus(state.deviceInfo); };
+    es.onerror = function(){ live.open = false; if (state.deviceInfo) paintStatus(state.deviceInfo); };
+    es.onmessage = function(m){ try { onLive(JSON.parse(m.data)); } catch (e) { /* ignore a malformed event */ } };
+    live.es = es;
+  }
+
   /* ---------- data loop ---------- */
   function exportLink(){
-    var until = state.serverTime || Math.floor(Date.now()/1000);
+    var until = Math.floor(serverNow());
     $("#export").href = "/api/export.csv?" + new URLSearchParams({device_id: state.device, since: until - state.range, until: until});
   }
 
   function loadDevices(){
     return getJSON("/api/devices").then(function(res){
       var sel = $("#device");
-      state.serverTime = res.server_time;
+      syncClock(res.server_time);
       if (!res.devices.length) { $("#empty").hidden = false; $("#main").hidden = true; paintOffline(); return false; }
       sel.innerHTML = res.devices.map(function(d){ return '<option value="'+d.device_id+'">'+d.device_id+'</option>'; }).join("");
       if (!res.devices.some(function(d){ return d.device_id === state.device; })) state.device = res.devices[0].device_id;
@@ -393,7 +462,7 @@
     return loadDevices().then(function(ok){
       if (!ok) return;
       return getJSON("/api/latest?" + new URLSearchParams({device_id: state.device})).then(function(l){
-        state.serverTime = l.server_time;
+        syncClock(l.server_time);
         state.latest = l.latest; state.previous = l.previous; state.types = l.device.types;
         paintStatus(l.device);
         var q = new URLSearchParams({device_id: state.device, since: l.server_time - state.range, until: l.server_time, max_points: 1200});
@@ -402,16 +471,19 @@
         var rd = res[0];
         state.types = rd.types.length ? rd.types : state.types;
         state.step = rd.bucket === 1 ? 10 : rd.bucket;
+        state.bucket = rd.bucket;
         state.stats = rd.stats;
         state.data = withGaps(rd.ts, rd.ch, state.step);
         state.hover = null;
-        drawChart(); paintTiles(); paintTable(res[1].rows); exportLink();
+        state.recent = res[1].rows;
+        drawChart(); paintTiles(); paintTable(state.recent); exportLink();
+        live.lastFull = Date.now();
         $("#count").textContent = rd.count.toLocaleString();
         $("#res").textContent = rd.bucket === 1 ? "raw, 10 s" : (rd.bucket >= 60 ? Math.round(rd.bucket/60) + " min" : rd.bucket + " s") + " average";
-        var last = state.latest, vals = last ? last.values.filter(function(v){ return v !== null; }) : [];
-        $("#spread").textContent = vals.length > 1 ? (Math.max.apply(null, vals) - Math.min.apply(null, vals)).toFixed(2) + " °C" : "—";
+        paintSpread();
         $("#updated").textContent = "updated " + hms(Date.now()/1000);
         $("#netwarn").classList.remove("on");
+        if (live.device !== state.device) connectLive();
       });
     }).catch(function(e){
       if (e && e.status === 401) { location.reload(); return; }
@@ -422,9 +494,18 @@
   $("#device").addEventListener("change", function(e){
     state.device = e.target.value; store.set("device", state.device); state.zoomed = false; refresh();
   });
-  setInterval(function(){ if (!document.hidden) refresh(); }, REFRESH_MS);
+  // With the live stream open a full reload is only a safety net; without it, poll every 10 s.
+  setInterval(function(){
+    var fresh = live.open && Date.now() - live.lastFull < (state.bucket === 1 ? 60000 : 30000);
+    if (!document.hidden && !fresh) refresh();
+  }, REFRESH_MS);
   document.addEventListener("visibilitychange", function(){ if (!document.hidden) refresh(); });
-  setInterval(function(){ $("#clock").textContent = stamp(Date.now()/1000); }, 1000);
+  var ticks = 0;
+  setInterval(function(){
+    $("#clock").textContent = stamp(serverNow());
+    if (++ticks % 5 === 0 && state.deviceInfo) paintStatus(state.deviceInfo);  // keeps "last seen" ageing
+  }, 1000);
+  connectLive();
   refresh();
 })();
 </script>

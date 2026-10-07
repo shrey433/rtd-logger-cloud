@@ -1,2 +1,3 @@
 fastapi>=0.110,<1
 uvicorn[standard]>=0.29,<1
+paho-mqtt>=2.1,<3

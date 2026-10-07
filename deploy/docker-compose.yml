@@ -1,0 +1,37 @@
+# docker compose up -d --build        (run from this folder, after creating .env and certs/)
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RTD_DB: /data/rtd.db
+      MQTT_PORT: "8883"
+      MQTT_TLS: "1"
+      MQTT_CLIENT_ID: rtd-dashboard
+      MQTT_CA: /certs/AmazonRootCA1.pem
+      MQTT_CERT: /certs/rtd-dashboard.cert.pem
+      MQTT_KEY: /certs/rtd-dashboard.private.key
+    volumes:
+      - rtd-data:/data
+      - ./certs:/certs:ro
+
+  caddy:  # terminates HTTPS and gets the certificate by itself
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  rtd-data:
+  caddy-data:
+  caddy-config:

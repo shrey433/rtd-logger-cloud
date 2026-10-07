@@ -8,8 +8,9 @@ Firmware, ingest API and dashboard for the 8-channel RTD temperature logger (ESP
 
 The sections below cover the cloud server.
 
-- `POST /ingest` takes the JSON payload from the spec (device token required)
-- `GET /` is the dashboard: live channel tiles, zoomable chart with gaps for outages, latest readings, CSV export
+- **MQTT in:** loggers publish one reading per message to `rtd/<device_id>/telemetry`; the app subscribes with QoS 1 and acknowledges a message only after it is stored
+- `POST /ingest` takes the same readings over HTTPS (device token required); kept for testing and for firmware that doesn't speak MQTT yet
+- `GET /` is the dashboard: tiles and chart update the moment a reading arrives (server-sent events from `/api/stream`), with gaps for outages, latest readings, and CSV export
 - SQLite storage, one wide row per device per timestamp, so a backlog re-sent after a Wi-Fi outage is de-duplicated
 
 ## Run locally
@@ -17,11 +18,13 @@ The sections below cover the cloud server.
 ```bash
 pip install -r requirements-dev.txt
 export RTD_API_TOKEN=dev-token          # PowerShell: $env:RTD_API_TOKEN="dev-token"
+python tools/dev_broker.py --port 1883 &          # throwaway local MQTT broker, no AWS needed
+export MQTT_HOST=127.0.0.1 MQTT_PORT=1883 MQTT_TLS=0
 python -m uvicorn app.main:app --port 8000
-python tools/simulate.py --token dev-token --backfill-hours 24 --outage 3:10-3:40 --live
+python tools/simulate.py --token dev-token --backfill-hours 24 --outage 3:10-3:40 --live --mqtt-host 127.0.0.1
 ```
 
-Open http://127.0.0.1:8000. Run the tests with `python -m pytest`.
+Open http://127.0.0.1:8000. Without `MQTT_HOST` the app still runs and takes readings over HTTP only. Run the tests with `python -m pytest` (one test starts a real local broker). `GET /healthz` reports `mqtt: subscribed` once the app is receiving.
 
 ## Configuration
 
@@ -31,15 +34,20 @@ Open http://127.0.0.1:8000. Run the tests with `python -m pytest`.
 | `RTD_DASHBOARD_PASSWORD` | Turns on HTTP Basic auth for the dashboard and `/api/*` (`/ingest` and `/healthz` stay open). |
 | `RTD_DASHBOARD_USER` | Basic auth user, default `admin`. |
 | `RTD_DB` | SQLite path, default `data/rtd.db` (`/data/rtd.db` in the Docker image). |
+| `MQTT_HOST` | Broker to subscribe to. Unset means MQTT is off. For AWS IoT Core, the account's `iot:Data-ATS` endpoint. |
+| `MQTT_PORT`, `MQTT_TLS` | Default `8883` with TLS on; set `MQTT_TLS=0` for a local broker. |
+| `MQTT_CA`, `MQTT_CERT`, `MQTT_KEY` | Root CA and the app's client certificate and key (AWS IoT Core authenticates with these). |
+| `MQTT_USERNAME`, `MQTT_PASSWORD` | For brokers that use passwords instead of certificates. |
+| `MQTT_CLIENT_ID` | Default `rtd-dashboard`. Fixed, so the broker keeps QoS 1 messages for the app while it restarts. |
 
-See `.env.example`.
+See `.env.example` and `deploy/.env.example`.
 
 ## Deploying
 
-The `Dockerfile` runs on any container host (Fly.io, Railway, Render, a VPS). Two things matter:
+`deploy/` holds a Docker Compose setup (the app plus Caddy for automatic HTTPS) and `aws_iot_setup.py`, which creates the IoT Core things, certificates and policies. `deploy/AWS_SETUP.md` has the steps for AWS IoT Core plus one Lightsail server. Whatever host you use, two things matter:
 
-1. **Mount a persistent volume on `/data`.** SQLite is a file; without a volume every redeploy wipes the history.
-2. **Serve it over HTTPS** and use that `https://` URL as `SERVER_URL` in the firmware. The device token and dashboard password travel in headers.
+1. **Keep the `/data` volume.** SQLite is a file; without a persistent volume every redeploy wipes the history.
+2. **Serve it over HTTPS.** The dashboard password travels in a header, and the live stream needs a proxy that doesn't buffer (Caddy's `flush_interval -1`, as configured).
 
 At 10 s sampling a device adds about 260k rows a month, which SQLite handles comfortably. If you later want a managed database or several writers, the storage code is confined to `app/db.py`.
 

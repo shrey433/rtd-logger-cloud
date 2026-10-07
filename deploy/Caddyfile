@@ -1,0 +1,6 @@
+{$DOMAIN} {
+	reverse_proxy app:8000 {
+		# the dashboard's live stream must not be buffered
+		flush_interval -1
+	}
+}

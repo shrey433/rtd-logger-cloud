@@ -77,6 +77,8 @@ def main() -> None:
     p.add_argument("--live", action="store_true", help="keep posting one reading every 10 s")
     p.add_argument("--demo-backlog", type=int, default=0, metavar="N",
                    help="in --live mode, report N rows queued on the device and count down one per post")
+    p.add_argument("--mqtt-host", help="in --live mode, publish over MQTT (a local dev broker) instead of HTTP")
+    p.add_argument("--mqtt-port", type=int, default=1883)
     p.add_argument("--seed", type=int, default=7)
     args = p.parse_args()
 
@@ -101,13 +103,26 @@ def main() -> None:
         sent += post(args.url, args.token, args.device, batch)["accepted"]
     print(f"backfill: {sent} readings stored, {skipped} skipped for outages")
 
+    mqtt_client = None
+    if args.live and args.mqtt_host:
+        import paho.mqtt.client as mqtt
+        mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.device)
+        mqtt_client.connect(args.mqtt_host, args.mqtt_port)
+        mqtt_client.loop_start()
+        print(f"live: publishing to rtd/{args.device}/telemetry on {args.mqtt_host}:{args.mqtt_port}")
+
     queued = args.demo_backlog
     while args.live:
         t = int(time.time())
+        row = reading(t, offsets, rng)
         try:
-            res = post(args.url, args.token, args.device, [reading(t, offsets, rng)], backlog=queued)
+            if mqtt_client:
+                message = {"fw_version": "sim-0.1.0", "backlog": queued, **row}
+                mqtt_client.publish(f"rtd/{args.device}/telemetry", json.dumps(message), qos=1)
+                print(f"{iso(t)} -> published")
+            else:
+                print(f"{iso(t)} -> {post(args.url, args.token, args.device, [row], backlog=queued)}")
             queued = max(0, queued - 1)
-            print(f"{iso(t)} -> {res}")
         except (urllib.error.URLError, TimeoutError) as e:
             print(f"{iso(t)} upload failed: {e}")
         time.sleep(INTERVAL_S)

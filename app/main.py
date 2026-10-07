@@ -1,56 +1,36 @@
+import asyncio
 import base64
 import csv
 import hmac
 import io
+import json
 import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
 
 from . import db
+from .ingest import Payload, store_readings
+from .live import hub
+from .mqtt_ingest import ingest as mqtt_ingest
 
-MIN_VALID_TS = 1704067200  # 2024-01-01: anything older means the device clock was never set
-MAX_FUTURE_S = 86400
 MAX_RANGE_S = 400 * 86400
-PT_MIN_C, PT_MAX_C = -200.0, 850.0
 OPEN_PATHS = {"/ingest", "/healthz"}
-
-
-class Channel(BaseModel):
-    ch: int = Field(ge=1, le=db.CHANNELS)
-    type: Literal["PT100", "PT1000"]
-    temp_c: Optional[float] = None  # null when the MAX31865 reports a fault
-
-
-class Reading(BaseModel):
-    ts: datetime
-    channels: List[Channel] = Field(min_length=db.CHANNELS, max_length=db.CHANNELS)
-
-    @field_validator("channels")
-    @classmethod
-    def channels_unique(cls, v: List[Channel]) -> List[Channel]:
-        if sorted(c.ch for c in v) != list(range(1, db.CHANNELS + 1)):
-            raise ValueError("channels must contain ch 1..8 exactly once each")
-        return v
-
-
-class Payload(BaseModel):
-    device_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
-    fw_version: str = Field(max_length=32)
-    backlog: Optional[int] = Field(default=None, ge=0, le=10_000_000)  # rows still queued on the device
-    readings: List[Reading] = Field(min_length=1, max_length=50)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    hub.bind(asyncio.get_running_loop())
+    if mqtt_ingest.configured():
+        mqtt_ingest.start()
     yield
+    mqtt_ingest.stop()
 
 
 app = FastAPI(title="RTD Logger cloud", lifespan=lifespan)
@@ -88,32 +68,17 @@ def _check_device_token(authorization: Optional[str]) -> None:
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"ok": True}
+    mqtt_state = "off"
+    if mqtt_ingest.configured():
+        mqtt_state = ("subscribed" if mqtt_ingest.subscribed
+                      else "connecting" if mqtt_ingest.connected else "disconnected")
+    return {"ok": True, "mqtt": mqtt_state}
 
 
 @app.post("/ingest")
 def ingest(payload: Payload, authorization: Optional[str] = Header(None)) -> dict:
     _check_device_token(authorization)
-    now = int(time.time())
-    rows = []
-    rejected = 0
-    types: List[str] = []
-    for reading in payload.readings:
-        ts = reading.ts if reading.ts.tzinfo else reading.ts.replace(tzinfo=timezone.utc)
-        epoch = int(ts.timestamp())
-        if epoch < MIN_VALID_TS or epoch > now + MAX_FUTURE_S:
-            rejected += 1
-            continue
-        by_ch = {c.ch: c for c in reading.channels}
-        values = []
-        for ch in range(1, db.CHANNELS + 1):
-            v = by_ch[ch].temp_c
-            values.append(v if v is not None and PT_MIN_C <= v <= PT_MAX_C else None)
-        rows.append((epoch, values))
-        types = [by_ch[ch].type for ch in range(1, db.CHANNELS + 1)]
-    inserted = (db.insert_readings(payload.device_id, payload.fw_version, types, rows, payload.backlog)
-                if rows else 0)
-    return {"accepted": inserted, "duplicates": len(rows) - inserted, "rejected": rejected}
+    return store_readings(payload.device_id, payload.fw_version, payload.backlog, payload.readings)
 
 
 def _device_or_404(device_id: str) -> dict:
@@ -162,6 +127,30 @@ def readings(device_id: str, since: int, until: Optional[int] = None,
     data = db.bucketed(device_id, since, until, bucket)
     return {"device_id": device_id, "types": device["types"], "since": since,
             "until": until, "bucket": bucket, **data}
+
+
+@app.get("/api/stream")
+async def stream(device_id: Optional[str] = None) -> StreamingResponse:
+    """Server-sent events: one `data:` line per new reading, so open dashboards update at once."""
+    queue = hub.subscribe()
+
+    async def events():
+        try:
+            yield "retry: 3000\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                if device_id and event["device_id"] != device_id:
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            hub.unsubscribe(queue)
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/export.csv")
