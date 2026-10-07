@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db
+from . import backup, db
 from .ingest import Payload, store_readings
 from .live import hub
 from .mqtt_ingest import ingest as mqtt_ingest
@@ -29,7 +29,10 @@ async def lifespan(_: FastAPI):
     hub.bind(asyncio.get_running_loop())
     if mqtt_ingest.configured():
         mqtt_ingest.start()
+    scheduler = asyncio.create_task(backup.scheduler()) if backup.config()["repo"] else None
     yield
+    if scheduler:
+        scheduler.cancel()
     mqtt_ingest.stop()
 
 
@@ -127,6 +130,11 @@ def readings(device_id: str, since: int, until: Optional[int] = None,
     data = db.bucketed(device_id, since, until, bucket)
     return {"device_id": device_id, "types": device["types"], "since": since,
             "until": until, "bucket": bucket, **data}
+
+
+@app.get("/api/backup")
+def backup_status() -> dict:
+    return backup.info()
 
 
 @app.get("/api/stream")

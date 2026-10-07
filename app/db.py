@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS readings (
     received_at INTEGER NOT NULL,
     PRIMARY KEY (device_id, ts)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS backup_days (
+    device_id    TEXT    NOT NULL,
+    day          TEXT    NOT NULL,   -- local calendar day, YYYY-MM-DD
+    row_count    INTEGER NOT NULL,   -- rows that day when it was last pushed
+    max_received INTEGER NOT NULL,   -- latest received_at among them (a late row changes this)
+    pushed_at    INTEGER NOT NULL,
+    PRIMARY KEY (device_id, day)
+) WITHOUT ROWID;
 """
 
 
@@ -154,3 +162,53 @@ def iter_export(device_id: str, since: int, until: int) -> Iterator[sqlite3.Row]
             if not chunk:
                 break
             yield from chunk
+
+
+# ---- helpers for the nightly backup and prune ----------------------------------------------
+
+def device_ids() -> List[str]:
+    with connect() as conn:
+        return [r[0] for r in conn.execute("SELECT device_id FROM devices ORDER BY device_id")]
+
+
+def first_ts(device_id: str) -> Optional[int]:
+    with connect() as conn:
+        row = conn.execute("SELECT MIN(ts) FROM readings WHERE device_id=?", (device_id,)).fetchone()
+    return row[0]
+
+
+def day_stats(device_id: str, start: int, end: int) -> tuple:
+    """(row count, newest received_at) for readings with start <= ts < end."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(MAX(received_at), 0) FROM readings "
+            "WHERE device_id=? AND ts >= ? AND ts < ?", (device_id, start, end)).fetchone()
+    return row[0], row[1]
+
+
+def delete_range(device_id: str, start: int, end: int) -> int:
+    with connect() as conn:
+        return conn.execute("DELETE FROM readings WHERE device_id=? AND ts >= ? AND ts < ?",
+                            (device_id, start, end)).rowcount
+
+
+def get_backup_day(device_id: str, day: str) -> Optional[dict]:
+    with connect() as conn:
+        row = conn.execute("SELECT row_count, max_received, pushed_at FROM backup_days "
+                           "WHERE device_id=? AND day=?", (device_id, day)).fetchone()
+    return dict(row) if row else None
+
+
+def set_backup_day(device_id: str, day: str, row_count: int, max_received: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO backup_days (device_id, day, row_count, max_received, pushed_at) "
+            "VALUES (?, ?, ?, ?, ?)", (device_id, day, row_count, max_received, int(time.time())))
+
+
+def backup_summary() -> List[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT device_id, MAX(day) AS last_day, MAX(pushed_at) AS last_pushed_at, COUNT(*) AS days "
+            "FROM backup_days GROUP BY device_id ORDER BY device_id").fetchall()
+    return [dict(r) for r in rows]

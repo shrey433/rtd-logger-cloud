@@ -12,9 +12,13 @@ services:
       MQTT_CA: /certs/AmazonRootCA1.pem
       MQTT_CERT: /certs/rtd-dashboard.cert.pem
       MQTT_KEY: /certs/rtd-dashboard.private.key
+      BACKUP_SSH_KEY: /keys/backup_key
+      BACKUP_TZ: ${BACKUP_TZ:-Asia/Kolkata}
+      RETENTION_DAYS: ${RETENTION_DAYS:-30}
     volumes:
       - rtd-data:/data
       - ./certs:/certs:ro
+      - ./keys:/keys:ro  # the backup's deploy key, generated on the server by deploy.sh
 
   caddy:  # terminates HTTPS and gets the certificate by itself
     image: caddy:2

@@ -34,6 +34,8 @@ Open http://127.0.0.1:8000. Without `MQTT_HOST` the app still runs and takes rea
 | `RTD_DASHBOARD_PASSWORD` | Turns on HTTP Basic auth for the dashboard and `/api/*` (`/ingest` and `/healthz` stay open). |
 | `RTD_DASHBOARD_USER` | Basic auth user, default `admin`. |
 | `RTD_DB` | SQLite path, default `data/rtd.db` (`/data/rtd.db` in the Docker image). |
+| `BACKUP_REPO` | SSH URL of the private data repo for the nightly backup. Unset means no backup and no pruning. |
+| `BACKUP_SSH_KEY`, `BACKUP_TZ`, `BACKUP_AT`, `RETENTION_DAYS`, `BACKUP_DIR` | Deploy key path, the timezone that defines a "day" (default `Asia/Kolkata`), run time (default `00:30`), days kept in the database (default `30`), and where the local clone lives (default beside the database). |
 | `MQTT_HOST` | Broker to subscribe to. Unset means MQTT is off. For AWS IoT Core, the account's `iot:Data-ATS` endpoint. |
 | `MQTT_PORT`, `MQTT_TLS` | Default `8883` with TLS on; set `MQTT_TLS=0` for a local broker. |
 | `MQTT_CA`, `MQTT_CERT`, `MQTT_KEY` | Root CA and the app's client certificate and key (AWS IoT Core authenticates with these). |
@@ -41,6 +43,19 @@ Open http://127.0.0.1:8000. Without `MQTT_HOST` the app still runs and takes rea
 | `MQTT_CLIENT_ID` | Default `rtd-dashboard`. Fixed, so the broker keeps QoS 1 messages for the app while it restarts. |
 
 See `.env.example` and `deploy/.env.example`.
+
+## Backup and retention
+
+Set `BACKUP_REPO` (an SSH URL to a private GitHub repo) and the app does this once a day at 00:30 `BACKUP_TZ` (default `Asia/Kolkata`), and once shortly after every start:
+
+1. Each finished local day of each device is written to `data/<device_id>/<year>/<YYYY-MM-DD>.csv` in that repo, committed, and pushed. Today is never exported, because it isn't finished.
+2. A day is exported again if it no longer matches what was pushed, for example when a logger that was offline catches up and delivers rows from earlier days. The file is rewritten in a new commit.
+3. Rows older than `RETENTION_DAYS` (30, counting today) are then deleted from the database, **only for days whose last push matches what is in the database now**. If a push fails, or a day changed after its backup, that day is kept and tried again later (the dashboard footer says "backup failing, data is being kept").
+4. With `BACKUP_REPO` unset nothing is backed up and nothing is deleted.
+
+`GET /api/backup` shows the last run and the newest backed-up day per device. To run it by hand: `python -m app.backup`.
+
+On the server the push uses a deploy key that `deploy/deploy.sh` generates in `deploy/keys/` and prints. Add it to the data repo under Settings, Deploy keys, with **Allow write access**. The key never leaves the server and only works for that one repo.
 
 ## Deploying
 

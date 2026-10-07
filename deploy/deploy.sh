@@ -24,5 +24,12 @@ scp "${SSH_OPTS[@]}" deploy/certs/AmazonRootCA1.pem deploy/certs/rtd-dashboard.c
 scp "${SSH_OPTS[@]}" deploy/.env "ubuntu@$HOST:~/rtd/deploy/.env"
 remote 'chmod 600 ~/rtd/deploy/.env ~/rtd/deploy/certs/*.key'
 
+# The backup pushes to GitHub with its own key, created once on the server and never copied off it.
+remote 'mkdir -p ~/rtd/deploy/keys && { [ -f ~/rtd/deploy/keys/backup_key ] || ssh-keygen -q -t ed25519 -N "" -C rtd-logger-backup -f ~/rtd/deploy/keys/backup_key; }'
+
 remote 'cd ~/rtd/deploy && docker compose up -d --build'
 remote 'cd ~/rtd/deploy && docker compose ps'
+
+echo
+echo "Backup deploy key (GitHub: the data repo > Settings > Deploy keys > Add, tick 'Allow write access'):"
+remote 'cat ~/rtd/deploy/keys/backup_key.pub'

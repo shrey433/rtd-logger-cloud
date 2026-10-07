@@ -108,6 +108,7 @@
   .empty pre{margin:0;padding:14px 16px;background:var(--surface-2);overflow-x:auto;font:12px/1.6 var(--font-mono)}
   footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;
     gap:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+  .warn{color:var(--warn)}
   [hidden]{display:none!important}
 
   @media (max-width:820px){.tiles{grid-template-columns:repeat(2,1fr)}}
@@ -168,7 +169,7 @@
     </section>
   </main>
 
-  <footer><span id="meta"></span><span id="clock"></span></footer>
+  <footer><span id="meta"></span><span id="backup"></span><span id="clock"></span></footer>
 </div>
 
 <script src="/vendor/uPlot.iife.min.js"></script>
@@ -373,6 +374,15 @@
       "  ·  first seen " + stamp(device.first_seen);
   }
 
+  function paintBackup(b){
+    var el = $("#backup"), last = b.devices && b.devices[0] && b.devices[0].last_day;
+    el.className = "";
+    if (!b.enabled) { el.textContent = "backup off · nothing is deleted"; el.className = "warn"; }
+    else if (b.last_error) { el.textContent = "backup failing, data is being kept"; el.className = "warn"; el.title = b.last_error; }
+    else el.textContent = (last ? "backed up through " + last : "backup waiting for the first full day") +
+      " · keeps " + b.retention_days + " days";
+  }
+
   function paintSpread(){
     var vals = state.latest ? state.latest.values.filter(function(v){ return v !== null; }) : [];
     $("#spread").textContent = vals.length > 1 ?
@@ -483,6 +493,7 @@
         paintSpread();
         $("#updated").textContent = "updated " + hms(Date.now()/1000);
         $("#netwarn").classList.remove("on");
+        getJSON("/api/backup").then(paintBackup).catch(function(){});
         if (live.device !== state.device) connectLive();
       });
     }).catch(function(e){

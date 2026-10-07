@@ -34,6 +34,8 @@ A second logger later is the same command with another `--device` name; the shar
 3. Ship and start it: `bash deploy/deploy.sh <elastic-ip>`. It sends the committed code (`git archive`), the app's certificate and `deploy/.env`, then runs `docker compose up -d --build`. Run it again after each change you commit.
 4. Check `https://<DOMAIN>/healthz` shows `"mqtt":"subscribed"`, then open `https://<DOMAIN>/` and sign in with the dashboard user and password.
 
+5. **Backup repo.** Create an empty private GitHub repo (for example `rtd-logger-data`, no README), put its SSH URL in `deploy/.env` as `BACKUP_REPO`, and run `deploy.sh` again. It prints the server's public deploy key; add it to that repo under Settings, Deploy keys, with *Allow write access*. The first backup runs at 00:30 India time, once there is a finished day. Check `https://<DOMAIN>/api/backup`, or watch the footer of the dashboard.
+
 SSH note: the security group only lets in the address you give it, and the address AWS sees for SSH can differ from what `checkip.amazonaws.com` reports (carrier-grade NAT). If SSH times out, check which address the server sees (`echo $SSH_CLIENT` over a temporary rule) and allow that one.
 
 ## 3. Quick check from your PC, before the firmware speaks MQTT
