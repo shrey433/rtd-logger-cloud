@@ -112,6 +112,15 @@ void setup() {
   Sensors::selfTest();
   TimeSync::begin();
 
+  WiFi.onEvent([](arduino_event_id_t event, arduino_event_info_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP)
+      Serial.printf("wifi: connected to %s, ip %s\n", WIFI_SSID, WiFi.localIP().toString().c_str());
+    else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+      Serial.printf("wifi: not connected (reason %d%s)\n", info.wifi_sta_disconnected.reason,
+                    info.wifi_sta_disconnected.reason == WIFI_REASON_NO_AP_FOUND
+                        ? ": network not seen, the ESP32 needs a 2.4 GHz network"
+                        : info.wifi_sta_disconnected.reason == WIFI_REASON_AUTH_FAIL ? ": wrong password" : "");
+  });
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
