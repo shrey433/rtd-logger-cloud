@@ -489,7 +489,7 @@
           <tr class="group"><td colspan="5">Core electronics</td></tr>
           <tr>
             <td class="ref">U1</td>
-            <td class="part">ESP32-S3-WROOM-1-N8R2 module or dev board</td>
+            <td class="part">ESP32-S3-WROOM-1-N8R2 module or dev board (an N16R8 also works: build with <code>-e esp32s3-n16r8</code>)</td>
             <td class="qty">1</td>
             <td>SPI, GPIO, Wi-Fi</td>
             <td class="note">8 MB flash, 2 MB PSRAM — SPI master, 9 chip-selects, NTP/Wi-Fi upload, PSRAM hosts the offline backlog queue, flash mirrors it so it survives power loss</td>
@@ -685,7 +685,7 @@
             <td class="ref">channels[].temp_c</td>
             <td class="part">number</td>
             <td class="qty">yes</td>
-            <td class="note">Degrees Celsius, 2 decimal places; <code>null</code> when the MAX31865 reports a fault on that channel</td>
+            <td class="note">Degrees Celsius, 2 decimal places. A channel with no sensor connected reports <code>0.00</code>; <code>null</code> means a connected sensor has a MAX31865 fault</td>
           </tr>
         </tbody>
       </table>

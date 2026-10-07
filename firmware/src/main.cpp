@@ -109,6 +109,7 @@ void setup() {
   FlashBacklog::begin(backlog);  // brings back anything that was unsent before a reset or power cut
   nextRowId = FlashBacklog::lastId() + 1;
   Sensors::begin();
+  Sensors::selfTest();
   TimeSync::begin();
 
   WiFi.mode(WIFI_STA);
