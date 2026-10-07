@@ -152,3 +152,12 @@ def test_status_endpoint_reports_the_last_run(env):
         info = client.get("/api/backup").json()
     assert info["enabled"] and info["retention_days"] == 30 and info["timezone"] == "Asia/Kolkata"
     assert info["last_ok"] and info["devices"][0]["last_day"] == "2026-10-05"
+
+
+def test_demo_devices_are_never_backed_up_or_pruned(env):
+    add([ist(2026, 8, 20, 12).timestamp()], device="demo-logger")
+    add([ist(2026, 8, 20, 12).timestamp()], device="d1")
+    summary = backup.run(now=ist(2026, 10, 7, 10, 0))
+    assert summary["pruned_rows"] == 1                      # only the real device's old row
+    assert not any("demo-logger" in f for f in env.files())
+    assert len(db.recent_rows("demo-logger", 10)) == 1      # the demo row is left alone

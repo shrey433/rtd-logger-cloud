@@ -24,6 +24,7 @@ from . import db
 
 log = logging.getLogger("rtd.backup")
 _lock = threading.Lock()
+SKIP_PREFIX = "demo-"  # demo/simulated devices are never backed up or pruned
 status = {"last_run": None, "last_ok": None, "last_error": None, "last_summary": None}
 
 REPO_README = """# RTD logger data
@@ -95,6 +96,10 @@ def _csv_text(device_id: str, start: int, end: int) -> str:
     return buf.getvalue()
 
 
+def _devices() -> List[str]:
+    return [d for d in db.device_ids() if not d.startswith(SKIP_PREFIX)]
+
+
 def _days_with_data(cfg: dict, device_id: str, until_day: date):
     """Yield (day, start, end, count, newest_received) for each local day before until_day that has rows."""
     first = db.first_ts(device_id)
@@ -116,7 +121,7 @@ def _unchanged(device_id: str, day: date, count: int, newest: int) -> bool:
 
 def _export_and_push(cfg: dict, today: date, summary: dict) -> None:
     pending = []
-    for device_id in db.device_ids():
+    for device_id in _devices():
         for day, start, end, count, newest in _days_with_data(cfg, device_id, today):
             if not _unchanged(device_id, day, count, newest):
                 pending.append((device_id, day, start, end, count, newest))
@@ -154,7 +159,7 @@ def _export_and_push(cfg: dict, today: date, summary: dict) -> None:
 
 def _prune(cfg: dict, today: date, summary: dict) -> None:
     keep_from = today - timedelta(days=cfg["retention_days"] - 1)
-    for device_id in db.device_ids():
+    for device_id in _devices():
         for day, start, end, count, newest in list(_days_with_data(cfg, device_id, keep_from)):
             if _unchanged(device_id, day, count, newest):
                 summary["pruned_rows"] += db.delete_range(device_id, start, end)

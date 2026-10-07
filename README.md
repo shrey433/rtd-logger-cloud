@@ -52,6 +52,7 @@ Set `BACKUP_REPO` (an SSH URL to a private GitHub repo) and the app does this on
 2. A day is exported again if it no longer matches what was pushed, for example when a logger that was offline catches up and delivers rows from earlier days. The file is rewritten in a new commit.
 3. Rows older than `RETENTION_DAYS` (30, counting today) are then deleted from the database, **only for days whose last push matches what is in the database now**. If a push fails, or a day changed after its backup, that day is kept and tried again later (the dashboard footer says "backup failing, data is being kept").
 4. With `BACKUP_REPO` unset nothing is backed up and nothing is deleted.
+5. Devices whose id starts with `demo-` (the simulator's) are skipped entirely, so demo data never reaches the repo and is never pruned.
 
 `GET /api/backup` shows the last run and the newest backed-up day per device. To run it by hand: `python -m app.backup`.
 
