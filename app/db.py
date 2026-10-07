@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS devices (
     fw_version TEXT,
     types      TEXT,
     first_seen INTEGER NOT NULL,
-    last_seen  INTEGER NOT NULL
+    last_seen  INTEGER NOT NULL,
+    backlog    INTEGER
 );
 CREATE TABLE IF NOT EXISTS readings (
     device_id   TEXT    NOT NULL,
@@ -36,6 +37,9 @@ def init_db() -> None:
     os.makedirs(folder, exist_ok=True)
     with connect() as conn:
         conn.executescript(SCHEMA)
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(devices)")]
+        if "backlog" not in columns:  # database created before the device reported its queue
+            conn.execute("ALTER TABLE devices ADD COLUMN backlog INTEGER")
 
 
 @contextmanager
@@ -55,7 +59,7 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def insert_readings(device_id: str, fw_version: str, types: List[str],
-                    rows: List[tuple]) -> int:
+                    rows: List[tuple], backlog: Optional[int] = None) -> int:
     """rows: (ts, [8 floats or None]). Returns how many were new."""
     now = int(time.time())
     inserted = 0
@@ -67,13 +71,14 @@ def insert_readings(device_id: str, fw_version: str, types: List[str],
             cur = conn.execute(sql, (device_id, ts, *values, now))
             inserted += cur.rowcount
         conn.execute(
-            """INSERT INTO devices (device_id, fw_version, types, first_seen, last_seen)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO devices (device_id, fw_version, types, first_seen, last_seen, backlog)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(device_id) DO UPDATE SET
                  fw_version = excluded.fw_version,
                  types      = excluded.types,
-                 last_seen  = excluded.last_seen""",
-            (device_id, fw_version, json.dumps(types), now, now),
+                 last_seen  = excluded.last_seen,
+                 backlog    = excluded.backlog""",
+            (device_id, fw_version, json.dumps(types), now, now, backlog),
         )
     return inserted
 
@@ -81,7 +86,7 @@ def insert_readings(device_id: str, fw_version: str, types: List[str],
 def list_devices() -> List[dict]:
     with connect() as conn:
         rows = conn.execute(
-            "SELECT device_id, fw_version, types, first_seen, last_seen FROM devices "
+            "SELECT device_id, fw_version, types, first_seen, last_seen, backlog FROM devices "
             "ORDER BY device_id").fetchall()
     return [
         {
@@ -90,6 +95,7 @@ def list_devices() -> List[dict]:
             "types": json.loads(r["types"]) if r["types"] else [],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
+            "backlog": r["backlog"],
         }
         for r in rows
     ]

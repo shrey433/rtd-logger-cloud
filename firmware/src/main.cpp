@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <time.h>
 
+#include "FlashBacklog.h"
 #include "ReadingQueue.h"
 #include "Sensors.h"
 #include "TimeSync.h"
@@ -14,6 +15,7 @@
 #endif
 
 static ReadingQueue backlog;
+static uint32_t nextRowId;
 static uint32_t nextSampleMs;
 static uint32_t lastWifiAttemptMs;
 
@@ -34,6 +36,18 @@ static void initBacklog() {
                 psramFound() ? "PSRAM" : "internal RAM");
 }
 
+static void queueRow(const Reading& r) {
+  backlog.push(r);
+  FlashBacklog::append(r);
+}
+
+static void rowDelivered() {
+  Reading oldest;
+  if (!backlog.peekOldest(oldest)) return;
+  backlog.popOldest();
+  FlashBacklog::consumeThrough(oldest.id);
+}
+
 // WiFi's own auto-reconnect only covers a link that was up; this also recovers from a failed boot.
 static void keepWifiUp() {
   if (WiFi.status() == WL_CONNECTED) return;
@@ -52,6 +66,7 @@ static void runCycle() {
   }
 
   Reading live{};
+  live.id = nextRowId++;
   live.ts = (uint32_t)time(nullptr);
   int good = Sensors::sample(live);
 
@@ -66,16 +81,17 @@ static void runCycle() {
     haveBacklog = backlog.peekOldest(batch[0]);
     if (haveBacklog) n = 1;
     batch[n++] = live;
-    Uploader::Result r = Uploader::post(batch, n);
+    size_t left = backlog.size() - (haveBacklog ? 1 : 0);
+    Uploader::Result r = Uploader::post(batch, n, left);
     if (r == Uploader::Result::Retry) {
-      backlog.push(live);
+      queueRow(live);
       outcome = "upload failed, queued";
     } else {
-      if (haveBacklog) backlog.popOldest();
+      if (haveBacklog) rowDelivered();
       outcome = r == Uploader::Result::Ok ? "sent" : "dropped by server";
     }
   } else {
-    backlog.push(live);
+    queueRow(live);
   }
 
   Serial.printf("%lu ok=%d/%d [", (unsigned long)live.ts, good, kChannels);
@@ -93,6 +109,8 @@ void setup() {
   Serial.printf("\nRTD logger %s, device %s\n", FW_VERSION, DEVICE_ID);
 
   initBacklog();
+  FlashBacklog::begin(backlog);  // brings back anything that was unsent before a reset or power cut
+  nextRowId = FlashBacklog::lastId() + 1;
   Sensors::begin();
   TimeSync::begin();
 

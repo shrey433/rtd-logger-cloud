@@ -34,7 +34,13 @@ constexpr const char* NTP_SERVER_2 = "time.google.com";
 constexpr uint32_t MIN_VALID_EPOCH = 1704067200UL;  // 2024-01-01; anything older means "clock not set"
 
 // ---- Offline backlog ----------------------------------------------------------------------
-// 36 bytes per row, so 42000 rows is about 1.5 MB of the 2 MB PSRAM: roughly 116 hours at 10 s.
+// 40 bytes per row, so 40000 rows is 1.6 MB of the 2 MB PSRAM: roughly 111 hours at 10 s.
 // Without PSRAM (some dev boards) it falls back to a small internal-RAM queue.
-constexpr size_t QUEUE_CAPACITY_PSRAM    = 42000;
+constexpr size_t QUEUE_CAPACITY_PSRAM    = 40000;
 constexpr size_t QUEUE_CAPACITY_INTERNAL = 1500;
+
+// Every row that could not be uploaded is also written to flash, so a power cut does not lose it.
+// Rows live in segment files on the 2 MB "spiffs" partition (LittleFS), which holds up to
+// 36000 rows (1.4 MB, about 100 hours). Beyond that the oldest segment is deleted.
+constexpr uint32_t FLASH_SEG_ROWS = 400;  // rows per file, about 67 minutes
+constexpr size_t   FLASH_MAX_SEGS = 90;

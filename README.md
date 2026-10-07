@@ -57,6 +57,7 @@ At 10 s sampling a device adds about 260k rows a month, which SQLite handles com
 ```
 
 - `readings` holds 1 to 50 entries; the firmware sends the live row plus at most one backlog row.
+- `backlog` (optional) is how many rows are still queued on the device. The dashboard shows it as "Device queue" with the time left to catch up.
 - `temp_c` is `null` when the MAX31865 reports a fault, and values outside -200 to 850 °C are stored as null.
 - A reading with a timestamp before 2024 or more than a day ahead is counted under `rejected` rather than failing the request, so one bad row can never block the device's backlog.
 - Response: `{"accepted": n, "duplicates": n, "rejected": n}`. Anything 2xx, or a 400/422, tells the firmware to drop the rows it sent; 401, 5xx and timeouts make it keep and retry them.

@@ -11,5 +11,6 @@ enum class Result {
 };
 
 // POSTs the rows (oldest first) to SERVER_URL in the JSON shape the cloud server expects.
-Result post(const Reading* rows, size_t count);
+// `backlogRows` is how many rows will still be waiting on the device once this send succeeds.
+Result post(const Reading* rows, size_t count, size_t backlogRows);
 }  // namespace Uploader

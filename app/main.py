@@ -43,6 +43,7 @@ class Reading(BaseModel):
 class Payload(BaseModel):
     device_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
     fw_version: str = Field(max_length=32)
+    backlog: Optional[int] = Field(default=None, ge=0, le=10_000_000)  # rows still queued on the device
     readings: List[Reading] = Field(min_length=1, max_length=50)
 
 
@@ -110,7 +111,8 @@ def ingest(payload: Payload, authorization: Optional[str] = Header(None)) -> dic
             values.append(v if v is not None and PT_MIN_C <= v <= PT_MAX_C else None)
         rows.append((epoch, values))
         types = [by_ch[ch].type for ch in range(1, db.CHANNELS + 1)]
-    inserted = db.insert_readings(payload.device_id, payload.fw_version, types, rows) if rows else 0
+    inserted = (db.insert_readings(payload.device_id, payload.fw_version, types, rows, payload.backlog)
+                if rows else 0)
     return {"accepted": inserted, "duplicates": len(rows) - inserted, "rejected": rejected}
 
 

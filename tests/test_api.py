@@ -99,6 +99,47 @@ def test_latest_and_recent_order(client):
     assert [r["values"][0] for r in recent] == [22.0, 21.0]
 
 
+def test_device_backlog_is_stored_and_reported(client):
+    now = int(time.time())
+    body = payload([reading(now)])
+    body["backlog"] = 120
+    assert client.post("/ingest", json=body, headers=AUTH).status_code == 200
+    device = client.get("/api/devices").json()["devices"][0]
+    assert device["backlog"] == 120
+    # a payload without the field (older firmware) clears it rather than leaving a stale number
+    client.post("/ingest", json=payload([reading(now + 10)]), headers=AUTH)
+    assert client.get("/api/devices").json()["devices"][0]["backlog"] is None
+
+
+def test_negative_backlog_is_rejected(client):
+    body = payload([reading(int(time.time()))])
+    body["backlog"] = -1
+    assert client.post("/ingest", json=body, headers=AUTH).status_code == 422
+
+
+def test_database_from_before_backlog_column_is_migrated(tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE devices (device_id TEXT PRIMARY KEY, fw_version TEXT, types TEXT,"
+        " first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL);"
+        "INSERT INTO devices VALUES ('rtd-old', '0.0.1', '[]', 1, 2);")
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("RTD_DB", str(path))
+    monkeypatch.setenv("RTD_API_TOKEN", TOKEN)
+    monkeypatch.delenv("RTD_DASHBOARD_PASSWORD", raising=False)
+    from app.main import app
+    with TestClient(app) as c:
+        devices = c.get("/api/devices").json()["devices"]
+        assert devices[0]["device_id"] == "rtd-old" and devices[0]["backlog"] is None
+        body = payload([reading(int(time.time()))], device="rtd-old")
+        body["backlog"] = 5
+        assert c.post("/ingest", json=body, headers=AUTH).status_code == 200
+        assert c.get("/api/devices").json()["devices"][0]["backlog"] == 5
+
+
 def test_unknown_device_404(client):
     assert client.get("/api/latest", params={"device_id": "ghost"}).status_code == 404
 

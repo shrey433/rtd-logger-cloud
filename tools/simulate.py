@@ -43,8 +43,11 @@ def reading(epoch: int, offsets, rng, fault_ch=None):
     }
 
 
-def post(url: str, token: str, device: str, readings) -> dict:
-    body = json.dumps({"device_id": device, "fw_version": "sim-0.1.0", "readings": readings}).encode()
+def post(url: str, token: str, device: str, readings, backlog=None) -> dict:
+    payload = {"device_id": device, "fw_version": "sim-0.1.0", "readings": readings}
+    if backlog is not None:
+        payload["backlog"] = backlog
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(
         url.rstrip("/") + "/ingest", data=body, method="POST",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
@@ -72,6 +75,8 @@ def main() -> None:
     p.add_argument("--outage", action="append", default=[], metavar="H:MM-H:MM",
                    help="leave a gap in the history, expressed as time ago (repeatable)")
     p.add_argument("--live", action="store_true", help="keep posting one reading every 10 s")
+    p.add_argument("--demo-backlog", type=int, default=0, metavar="N",
+                   help="in --live mode, report N rows queued on the device and count down one per post")
     p.add_argument("--seed", type=int, default=7)
     args = p.parse_args()
 
@@ -96,10 +101,12 @@ def main() -> None:
         sent += post(args.url, args.token, args.device, batch)["accepted"]
     print(f"backfill: {sent} readings stored, {skipped} skipped for outages")
 
+    queued = args.demo_backlog
     while args.live:
         t = int(time.time())
         try:
-            res = post(args.url, args.token, args.device, [reading(t, offsets, rng)])
+            res = post(args.url, args.token, args.device, [reading(t, offsets, rng)], backlog=queued)
+            queued = max(0, queued - 1)
             print(f"{iso(t)} -> {res}")
         except (urllib.error.URLError, TimeoutError) as e:
             print(f"{iso(t)} upload failed: {e}")

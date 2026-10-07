@@ -36,10 +36,11 @@ void isoTime(uint32_t epoch, char* out, size_t len) {
   strftime(out, len, "%Y-%m-%dT%H:%M:%SZ", &tmv);
 }
 
-String buildBody(const Reading* rows, size_t count) {
+String buildBody(const Reading* rows, size_t count, size_t backlogRows) {
   JsonDocument doc;
   doc["device_id"] = DEVICE_ID;
   doc["fw_version"] = FW_VERSION;
+  doc["backlog"] = (uint32_t)backlogRows;
   JsonArray readings = doc["readings"].to<JsonArray>();
   for (size_t i = 0; i < count; i++) {
     char ts[24];
@@ -63,8 +64,8 @@ String buildBody(const Reading* rows, size_t count) {
 
 namespace Uploader {
 
-Result post(const Reading* rows, size_t count) {
-  String body = buildBody(rows, count);
+Result post(const Reading* rows, size_t count, size_t backlogRows) {
+  String body = buildBody(rows, count, backlogRows);
 
   http.setReuse(true);  // keep the TLS session open between 10 s cycles when the server allows it
   http.setTimeout(HTTP_TIMEOUT_MS);

@@ -5,6 +5,7 @@
 constexpr int kChannels = 8;
 
 struct Reading {
+  uint32_t id;               // increases with every sample; ties RAM rows to their flash copy
   uint32_t ts;               // Unix epoch seconds, UTC
   float temp_c[kChannels];   // NAN when the MAX31865 reports a fault
 };

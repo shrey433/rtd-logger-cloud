@@ -346,7 +346,7 @@
           <line x1="490" y1="180" x2="626" y2="180" stroke="currentColor" stroke-width="1" opacity="0.3"/>
           <text x="558" y="210" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">8× GPIO — RTD chip-select</text>
           <text x="558" y="229" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">802.11 b/g/n radio</text>
-          <text x="558" y="248" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">RAM buffer — no local storage</text>
+          <text x="558" y="248" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">PSRAM queue + flash backup</text>
 
           <!-- right to wifi/cloud -->
           <line x1="646" y1="196" x2="712" y2="196" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow)"/>
@@ -354,7 +354,7 @@
           <rect x="712" y="150" width="150" height="92" rx="2" fill="none" stroke="var(--accent2)" stroke-width="1.5"/>
           <text x="787" y="182" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--accent2)">Server / cloud</text>
           <text x="787" y="200" text-anchor="middle" font-size="10" fill="var(--accent2)" opacity="0.8">time-series upload</text>
-          <text x="787" y="222" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.55">buffered in RAM</text>
+          <text x="787" y="222" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.55">buffered on device</text>
           <text x="787" y="236" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.55">if offline</text>
 
           <!-- power rail -->
@@ -372,7 +372,7 @@
         </defs>
       </svg>
     </figure>
-    <figcaption>One of eight identical channels shown; each RTD is force/sense-wired 3-wire into its own MAX31865, all eight sharing one SPI bus with separate chip-selects into the ESP32-S3, which pushes readings over Wi-Fi — there's no local storage, so unsent rows live in RAM until the connection returns.</figcaption>
+    <figcaption>One of eight identical channels shown; each RTD is force/sense-wired 3-wire into its own MAX31865, all eight sharing one SPI bus with separate chip-selects into the ESP32-S3, which pushes readings over Wi-Fi — unsent rows queue in PSRAM and are mirrored to the ESP32's flash, so they survive a power cut and are sent when the connection returns.</figcaption>
   </section>
 
   <section>
@@ -441,8 +441,8 @@
           <line x1="240" y1="478" x2="150" y2="478" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
           <text x="195" y="470" text-anchor="middle" font-size="10.5" opacity="0.7">no</text>
           <rect x="0" y="448" width="150" height="60" rx="2" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.8"/>
-          <text x="75" y="470" text-anchor="middle" font-size="11">Leave row in</text>
-          <text x="75" y="486" text-anchor="middle" font-size="11">queue — retry</text>
+          <text x="75" y="470" text-anchor="middle" font-size="11">Queue row in RAM</text>
+          <text x="75" y="486" text-anchor="middle" font-size="11">+ flash, retry</text>
           <text x="75" y="501" text-anchor="middle" font-size="10" opacity="0.7">next cycle</text>
 
           <line x1="542" y1="508" x2="542" y2="540" stroke="currentColor" stroke-width="1.2" opacity="0.7"/>
@@ -467,7 +467,7 @@
 
     <div class="callout">
       <span class="tag">Backlog capacity</span>
-      <span>Each queued row is date-time + 8 channel readings ≈ 40&nbsp;bytes; at the 10&nbsp;s sample interval that's 14.4&nbsp;KB/hour of backlog growth. The N8R2's 2&nbsp;MB PSRAM comfortably holds the queue — budgeting ~1.6&nbsp;MB to it (leaving headroom for Wi-Fi/TLS buffers and heap fragmentation) gives roughly 42,000 rows, or <strong>~116 hours (~4.8 days)</strong> of Wi-Fi outage before the buffer fills and the oldest unsent rows start being dropped. A power loss still empties the queue, since it's RAM, not flash.</span>
+      <span>Each queued row is date-time + 8 channel readings ≈ 40&nbsp;bytes; at the 10&nbsp;s sample interval that's 14.4&nbsp;KB/hour of backlog growth. The N8R2's 2&nbsp;MB PSRAM comfortably holds the queue — budgeting ~1.6&nbsp;MB to it (leaving headroom for Wi-Fi/TLS buffers and heap fragmentation) gives 40,000 rows, or <strong>~111 hours (~4.6 days)</strong> of Wi-Fi outage before the buffer fills and the oldest unsent rows start being dropped. Every queued row is also written to the flash's LittleFS partition (up to 36,000 rows, ~100 hours), so a power cut or reset no longer loses the backlog: it is reloaded at boot and sent once Wi-Fi is back. Flash is written only while rows are queued, so normal operation causes no wear.</span>
     </div>
 
     <div class="callout">
@@ -492,7 +492,7 @@
             <td class="part">ESP32-S3-WROOM-1-N8R2 module or dev board</td>
             <td class="qty">1</td>
             <td>SPI, GPIO, Wi-Fi</td>
-            <td class="note">8 MB flash, 2 MB PSRAM — SPI master, 9 chip-selects, NTP/Wi-Fi upload, PSRAM hosts the offline backlog queue</td>
+            <td class="note">8 MB flash, 2 MB PSRAM — SPI master, 9 chip-selects, NTP/Wi-Fi upload, PSRAM hosts the offline backlog queue, flash mirrors it so it survives power loss</td>
           </tr>
           <tr>
             <td class="ref">U2–U8</td>
@@ -619,6 +619,7 @@
 {
   <span class="k">"device_id"</span>: <span class="s">"rtd-logger-01"</span>,
   <span class="k">"fw_version"</span>: <span class="s">"1.0.0"</span>,
+  <span class="k">"backlog"</span>: 0,
   <span class="k">"readings"</span>: [
     {
       <span class="k">"ts"</span>: <span class="s">"2026-09-09T14:32:10Z"</span>,
@@ -656,6 +657,12 @@
             <td class="part">string</td>
             <td class="qty">yes</td>
             <td class="note">Current firmware version — lets the server correlate readings with what's running, and target OTA pushes later</td>
+          </tr>
+          <tr>
+            <td class="ref">backlog</td>
+            <td class="part">integer</td>
+            <td class="qty">no</td>
+            <td class="note">Rows still queued on the device once this upload succeeds; the dashboard shows it and the time left to catch up</td>
           </tr>
           <tr>
             <td class="ref">readings[]</td>

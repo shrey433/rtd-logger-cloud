@@ -25,7 +25,15 @@ PlatformIO needs Python 3.10 or newer. Host-side tests for the offline queue: `p
 
 1. Wait for a valid clock (DS3231 or NTP), then read all 8 channels with one-shot conversions (about 0.6 s).
 2. If Wi-Fi is up, POST the new row together with the oldest queued row, so a reconnect catches up one row per cycle.
-3. If Wi-Fi is down or the upload fails, push the row onto the PSRAM queue (42,000 rows, roughly 116 hours).
-4. A channel with a MAX31865 fault is sent as `null`. NTP re-syncs once a day and updates the DS3231.
+3. If Wi-Fi is down or the upload fails, push the row onto the PSRAM queue (40,000 rows, roughly 111 hours) and also
+   append it to a LittleFS file on the flash `spiffs` partition (up to 36,000 rows, roughly 100 hours).
+4. After a reset or power cut, `FlashBacklog::begin()` reloads every unsent row from flash into the queue. A row is
+   released from flash only once the server has acknowledged it; if the device dies between the upload and that
+   bookkeeping, the row is simply sent again and the server drops the duplicate.
+5. A channel with a MAX31865 fault is sent as `null`. NTP re-syncs once a day and updates the DS3231.
+
+Flash is only written while rows are being queued, so a healthy connection causes no flash wear. If flash cannot be
+mounted the logger carries on with the RAM queue alone. Each upload also carries `backlog`, the number of rows still
+waiting on the device, which the dashboard shows.
 
 `partitions.csv` already reserves two app slots and `otadata`, so OTA can be added later without a USB reflash.
