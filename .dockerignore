@@ -3,6 +3,8 @@
 data/
 tests/
 tools/
+firmware/
+docs/
 __pycache__/
 *.pyc
 .pytest_cache/

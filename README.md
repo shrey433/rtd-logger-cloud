@@ -1,7 +1,12 @@
 # RTD Logger cloud
 
-Ingest API and dashboard for the 8-channel RTD temperature logger (ESP32-S3 + MAX31865).
-The device firmware lives in a separate repo; this one receives its uploads, stores them, and shows them.
+Firmware, ingest API and dashboard for the 8-channel RTD temperature logger (ESP32-S3 + MAX31865).
+
+- `firmware/` is the ESP32-S3 PlatformIO project (see `firmware/README.md`)
+- `app/` is the cloud server that receives the uploads, stores them, and serves the dashboard
+- `docs/rtd-logger-spec.html` is the design spec: architecture, BOM, wiring and payload format
+
+The sections below cover the cloud server.
 
 - `POST /ingest` takes the JSON payload from the spec (device token required)
 - `GET /` is the dashboard: live channel tiles, zoomable chart with gaps for outages, latest readings, CSV export

@@ -1,0 +1,789 @@
+<title>8-Channel RTD Logger</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg: #eef0ea;
+    --surface: #ffffff;
+    --surface-2: #e4e7de;
+    --ink: #1b211d;
+    --muted: #5c6660;
+    --accent: #b9591f;
+    --accent-ink: #ffffff;
+    --accent2: #2f6f6b;
+    --line: #ccd1c4;
+    --line-strong: #9aa397;
+    --good: #2f7d4f;
+    --font-body: 'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
+    --font-mono: 'IBM Plex Mono', SFMono-Regular, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #12181a;
+      --surface: #182022;
+      --surface-2: #1e2729;
+      --ink: #e7ece7;
+      --muted: #93a19a;
+      --accent: #e08a4f;
+      --accent-ink: #14100b;
+      --accent2: #58b3ac;
+      --line: #2b3436;
+      --line-strong: #3c4749;
+      --good: #6fc98e;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #12181a;
+    --surface: #182022;
+    --surface-2: #1e2729;
+    --ink: #e7ece7;
+    --muted: #93a19a;
+    --accent: #e08a4f;
+    --accent-ink: #14100b;
+    --accent2: #58b3ac;
+    --line: #2b3436;
+    --line-strong: #3c4749;
+    --good: #6fc98e;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    margin:0;
+    padding:0 20px 80px;
+  }
+  .sheet{
+    max-width:920px;
+    margin:0 auto;
+  }
+
+  /* header / title block */
+  .titleblock{
+    padding:40px 0 22px;
+    border-bottom:3px solid var(--ink);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:24px;
+    flex-wrap:wrap;
+  }
+  .titleblock .doc-id{
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:.08em;
+    color:var(--muted);
+    text-transform:uppercase;
+    margin:0 0 10px;
+  }
+  h1{
+    font-size:clamp(28px,4vw,40px);
+    line-height:1.08;
+    margin:0;
+    letter-spacing:-.01em;
+    text-wrap:balance;
+  }
+  .titleblock .rev{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--muted);
+    text-align:right;
+    white-space:nowrap;
+  }
+
+  /* spec strip */
+  .specstrip{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    margin:0 0 44px;
+  }
+  .spec{
+    background:var(--surface);
+    padding:16px 18px;
+  }
+  .spec .label{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 6px;
+  }
+  .spec .value{
+    font-family:var(--font-mono);
+    font-size:19px;
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  .spec .value small{
+    font-size:12px;
+    font-weight:400;
+    color:var(--muted);
+  }
+
+  section{ margin:0 0 56px; }
+  .sec-head{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    margin:0 0 6px;
+  }
+  .sec-num{
+    font-family:var(--font-mono);
+    color:var(--accent);
+    font-size:14px;
+    font-weight:600;
+  }
+  h2{
+    font-size:21px;
+    margin:0;
+    letter-spacing:-.005em;
+  }
+  .sec-dek{
+    color:var(--muted);
+    font-size:14.5px;
+    margin:8px 0 24px;
+    max-width:62ch;
+    line-height:1.55;
+  }
+
+  figure{ margin:0; }
+  .diagram{
+    background:var(--surface);
+    border:1px solid var(--line);
+    padding:22px 20px 14px;
+  }
+  .diagram svg{ display:block; width:100%; height:auto; }
+  figcaption{
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    color:var(--muted);
+    margin-top:12px;
+    line-height:1.5;
+  }
+
+  /* BOM table */
+  .tablewrap{ overflow-x:auto; border:1px solid var(--line); }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; min-width:720px; }
+  thead th{
+    text-align:left;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    padding:10px 14px;
+    background:var(--surface-2);
+    border-bottom:1px solid var(--line-strong);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:11px 14px;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:nth-child(even){ background:var(--surface-2); }
+  td.ref{ font-family:var(--font-mono); color:var(--accent2); font-weight:600; white-space:nowrap; }
+  td.qty{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+  td.part{ font-weight:600; }
+  td.note{ color:var(--muted); font-size:12.8px; }
+  tr.group td{
+    background:var(--surface-2) !important;
+    border-bottom:1px solid var(--line-strong);
+    padding:8px 14px;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--accent);
+    font-weight:600;
+  }
+
+  .toollist{
+    margin-top:20px;
+    font-size:13.5px;
+    line-height:1.7;
+  }
+  .toollist .label{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 8px;
+  }
+  .toollist ul{
+    margin:0;
+    padding-left:18px;
+  }
+  .toollist li{ margin-bottom:3px; }
+
+  .callout{
+    display:flex;
+    gap:14px;
+    padding:16px 18px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    font-size:13.5px;
+    line-height:1.6;
+    margin-top:20px;
+  }
+  .callout .tag{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    white-space:nowrap;
+    padding-top:2px;
+  }
+
+  .codewrap{ overflow-x:auto; border:1px solid var(--line); background:var(--surface); }
+  pre.code{
+    margin:0;
+    padding:18px 20px;
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    line-height:1.65;
+    white-space:pre;
+    color:var(--ink);
+  }
+  pre.code .k{ color:var(--accent2); }
+  pre.code .s{ color:var(--accent); }
+  pre.code .c{ color:var(--muted); font-style:italic; }
+
+  .fieldtable{ margin-top:16px; }
+  td.pin{ font-family:var(--font-mono); font-weight:600; white-space:nowrap; }
+  .subhead{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:28px 0 10px;
+  }
+
+  footer{
+    margin-top:64px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--muted);
+    display:flex;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+
+  @media (max-width:760px){
+    .specstrip{ grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+
+<div class="sheet">
+
+  <div class="titleblock">
+    <div>
+      <p class="doc-id">Project spec — thermal logging</p>
+      <h1>8-Channel RTD Temperature Logger</h1>
+    </div>
+    <div class="rev">DRAFT 3<br>2026-09-18</div>
+  </div>
+
+  <div class="specstrip">
+    <div class="spec"><p class="label">Channels</p><p class="value">8<small> RTD</small></p></div>
+    <div class="spec"><p class="label">Probe mix</p><p class="value">7+1<small> PT100 / PT1000</small></p></div>
+    <div class="spec"><p class="label">Target accuracy</p><p class="value">±0.5<small> °C</small></p></div>
+    <div class="spec"><p class="label">Lead length</p><p class="value">1<small> m, 3-wire</small></p></div>
+    <div class="spec"><p class="label">Sample interval</p><p class="value">10<small> s, fixed</small></p></div>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>Hardware architecture</h2></div>
+    <p class="sec-dek">Each RTD gets its own MAX31865 converter on a shared SPI bus — this is what makes ±0.5&nbsp;°C reachable with 1&nbsp;m PT100 leads: 3-wire compensation cancels lead resistance per channel in hardware instead of needing firmware calibration.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 880 420" role="img" aria-label="Architecture diagram: eight RTD probes each wired 3-wire into their own MAX31865 converter, all sharing one SPI bus with individual chip-select lines into an ESP32-S3, which uploads readings over WiFi to a server; a 5V supply feeds the MAX31865 rail and regulates down to 3.3V for the ESP32.">
+
+        <!-- RTD probe group -->
+        <g font-family="IBM Plex Mono, monospace">
+          <rect x="14" y="150" width="150" height="92" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="89" y="182" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">RTD probe</text>
+          <text x="89" y="200" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.65">1 m lead, 3-wire</text>
+          <text x="89" y="222" text-anchor="middle" font-size="11" fill="var(--accent)" font-weight="600">× 8 channels</text>
+
+          <!-- 3 wire lines -->
+          <line x1="164" y1="168" x2="222" y2="168" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="164" y1="196" x2="222" y2="196" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="164" y1="224" x2="222" y2="224" stroke="currentColor" stroke-width="1.5"/>
+          <text x="192" y="163" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.6">FORCE+</text>
+          <text x="192" y="191" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.6">SENSE</text>
+          <text x="192" y="219" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.6">FORCE−</text>
+
+          <!-- MAX31865 group -->
+          <rect x="222" y="140" width="172" height="112" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="308" y="168" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">MAX31865</text>
+          <text x="308" y="186" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.65">RTD-to-digital, 3-wire mode</text>
+          <text x="308" y="203" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.65">R_REF: 430Ω (PT100)</text>
+          <text x="308" y="218" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.65">4020Ω (PT1000 ×1)</text>
+          <text x="308" y="238" text-anchor="middle" font-size="11" fill="var(--accent)" font-weight="600">× 8 boards</text>
+
+          <!-- bus to ESP32 -->
+          <line x1="394" y1="196" x2="470" y2="196" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="432" y="186" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.7">SPI + 8× CS</text>
+
+          <!-- ESP32-S3 -->
+          <rect x="470" y="110" width="176" height="212" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+          <text x="558" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">ESP32-S3</text>
+          <text x="558" y="165" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.65">SPI host · Wi-Fi · RTC</text>
+          <line x1="490" y1="180" x2="626" y2="180" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+          <text x="558" y="210" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">8× GPIO — RTD chip-select</text>
+          <text x="558" y="229" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">802.11 b/g/n radio</text>
+          <text x="558" y="248" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.6">RAM buffer — no local storage</text>
+
+          <!-- right to wifi/cloud -->
+          <line x1="646" y1="196" x2="712" y2="196" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="679" y="186" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.7">Wi-Fi</text>
+          <rect x="712" y="150" width="150" height="92" rx="2" fill="none" stroke="var(--accent2)" stroke-width="1.5"/>
+          <text x="787" y="182" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--accent2)">Server / cloud</text>
+          <text x="787" y="200" text-anchor="middle" font-size="10" fill="var(--accent2)" opacity="0.8">time-series upload</text>
+          <text x="787" y="222" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.55">buffered in RAM</text>
+          <text x="787" y="236" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.55">if offline</text>
+
+          <!-- power rail -->
+          <line x1="308" y1="70" x2="308" y2="140" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+          <line x1="308" y1="70" x2="558" y2="70" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+          <line x1="558" y1="70" x2="558" y2="110" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.5" marker-end="url(#arrow)"/>
+          <rect x="238" y="34" width="140" height="36" rx="2" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.75"/>
+          <text x="308" y="57" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.75">5V→3.3V supply</text>
+        </g>
+
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+      </svg>
+    </figure>
+    <figcaption>One of eight identical channels shown; each RTD is force/sense-wired 3-wire into its own MAX31865, all eight sharing one SPI bus with separate chip-selects into the ESP32-S3, which pushes readings over Wi-Fi — there's no local storage, so unsent rows live in RAM until the connection returns.</figcaption>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>Firmware logic</h2></div>
+    <p class="sec-dek">One sweep of all eight channels every 10&nbsp;s, connected or not, then queued for upload. Once reconnected, the backlog drains one row per cycle alongside live data instead of dumping all at once.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 640 625" role="img" aria-label="Flow chart: boot and initialize SPI, Wi-Fi, and NTP time sync, with a background task resyncing NTP every 24 hours independent of the main loop to correct RTC drift; the main loop then loops through channels 1 to 8 selecting each chip-select, triggering a one-shot conversion, then reading resistance and converting to temperature via the Callendar-Van Dusen equation; after all eight channels, timestamp and push the row onto a RAM queue, check for a Wi-Fi connection, and if connected send the live row plus one oldest backlogged row, or leave the row queued if not connected, then wait 10 seconds and repeat.">
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+
+          <!-- start -->
+          <rect x="220" y="10" width="200" height="42" rx="21" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="320" y="36" text-anchor="middle" font-weight="600">Boot</text>
+          <line x1="320" y1="52" x2="320" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- init -->
+          <rect x="170" y="80" width="300" height="52" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="320" y="102" text-anchor="middle" font-weight="600">Initialize</text>
+          <text x="320" y="120" text-anchor="middle" font-size="10.5" opacity="0.65">SPI bus · 8× MAX31865 · RTC · NTP sync</text>
+          <line x1="320" y1="132" x2="320" y2="162" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- background NTP task -->
+          <rect x="470" y="14" width="150" height="66" rx="2" fill="none" stroke="var(--accent2)" stroke-width="1.2" stroke-dasharray="3 2"/>
+          <text x="545" y="34" text-anchor="middle" font-size="11" font-weight="600" fill="var(--accent2)">Background task</text>
+          <text x="545" y="50" text-anchor="middle" font-size="10" fill="var(--accent2)" opacity="0.85">NTP resync every 24 h</text>
+          <text x="545" y="64" text-anchor="middle" font-size="9.5" fill="var(--accent2)" opacity="0.7">(independent of 10 s loop)</text>
+          <text x="545" y="76" text-anchor="middle" font-size="9.5" fill="var(--accent2)" opacity="0.7">corrects RTC drift</text>
+          <line x1="470" y1="47" x2="470" y2="102" stroke="var(--accent2)" stroke-width="1" stroke-dasharray="3 2" opacity="0.7" marker-end="url(#arrow2)"/>
+
+          <!-- loop box -->
+          <rect x="120" y="162" width="400" height="170" rx="2" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+          <text x="145" y="184" font-size="10.5" fill="var(--accent)" font-weight="600">FOR ch = 1..8</text>
+
+          <rect x="150" y="196" width="340" height="40" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="320" y="220" text-anchor="middle" font-size="11.5">Assert CS[ch] · trigger 1-shot conversion</text>
+          <line x1="320" y1="236" x2="320" y2="252" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow2)"/>
+
+          <rect x="150" y="252" width="340" height="40" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="320" y="276" text-anchor="middle" font-size="11.5">Read resistance → Callendar-Van Dusen → °C</text>
+
+          <line x1="150" y1="272" x2="60" y2="272" stroke="currentColor" stroke-width="1" opacity="0.6"/>
+          <line x1="60" y1="272" x2="60" y2="216" stroke="currentColor" stroke-width="1" opacity="0.6"/>
+          <line x1="60" y1="216" x2="150" y2="216" stroke="currentColor" stroke-width="1" opacity="0.6" marker-end="url(#arrow2)"/>
+          <text x="30" y="244" font-size="10" fill="currentColor" opacity="0.6" transform="rotate(-90 30 244)">next ch</text>
+
+          <line x1="320" y1="332" x2="320" y2="360" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- timestamp + queue -->
+          <rect x="170" y="360" width="300" height="52" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="320" y="382" text-anchor="middle" font-weight="600">Timestamp row (date + time)</text>
+          <text x="320" y="400" text-anchor="middle" font-size="10.5" opacity="0.65">push onto RAM upload queue (date-time + 8 ch)</text>
+          <line x1="320" y1="412" x2="320" y2="440" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- decision -->
+          <polygon points="320,440 400,478 320,516 240,478" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="320" y="474" text-anchor="middle" font-size="11">Wi-Fi</text>
+          <text x="320" y="488" text-anchor="middle" font-size="11">connected?</text>
+
+          <line x1="400" y1="478" x2="470" y2="478" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <text x="435" y="470" text-anchor="middle" font-size="10.5" fill="var(--good)">yes</text>
+          <rect x="465" y="448" width="155" height="60" rx="2" fill="none" stroke="var(--good)" stroke-width="1.5"/>
+          <text x="542" y="466" text-anchor="middle" font-size="10.5" fill="var(--good)">Send live row +</text>
+          <text x="542" y="480" text-anchor="middle" font-size="10.5" fill="var(--good)">oldest backlog row</text>
+          <text x="542" y="494" text-anchor="middle" font-size="9.5" fill="var(--good)" opacity="0.8">(if queue non-empty)</text>
+
+          <line x1="240" y1="478" x2="150" y2="478" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <text x="195" y="470" text-anchor="middle" font-size="10.5" opacity="0.7">no</text>
+          <rect x="0" y="448" width="150" height="60" rx="2" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.8"/>
+          <text x="75" y="470" text-anchor="middle" font-size="11">Leave row in</text>
+          <text x="75" y="486" text-anchor="middle" font-size="11">queue — retry</text>
+          <text x="75" y="501" text-anchor="middle" font-size="10" opacity="0.7">next cycle</text>
+
+          <line x1="542" y1="508" x2="542" y2="540" stroke="currentColor" stroke-width="1.2" opacity="0.7"/>
+          <line x1="75" y1="508" x2="75" y2="540" stroke="currentColor" stroke-width="1.2" opacity="0.7"/>
+          <line x1="75" y1="540" x2="542" y2="540" stroke="currentColor" stroke-width="1.2" opacity="0.7"/>
+          <line x1="320" y1="540" x2="320" y2="556" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- delay -->
+          <rect x="220" y="556" width="200" height="46" rx="23" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="320" y="584" text-anchor="middle" font-weight="600">Wait 10 s →</text>
+
+          <path d="M 420 579 C 520 579, 520 470, 520 200 C 520 140, 470 106, 320 106" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4" stroke-dasharray="4 3" marker-end="url(#arrow2)"/>
+        </g>
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+      </svg>
+    </figure>
+    <figcaption>Every wake cycle sweeps all eight channels, queues the row in RAM, then — if Wi-Fi is up — sends that live row plus one oldest backlogged row per cycle, so a reconnect catches up gradually instead of flooding the server. A separate background task resyncs NTP once every 24 hours to keep the DS3231 from drifting, independent of the 10&nbsp;s sample loop.</figcaption>
+
+    <div class="callout">
+      <span class="tag">Backlog capacity</span>
+      <span>Each queued row is date-time + 8 channel readings ≈ 40&nbsp;bytes; at the 10&nbsp;s sample interval that's 14.4&nbsp;KB/hour of backlog growth. The N8R2's 2&nbsp;MB PSRAM comfortably holds the queue — budgeting ~1.6&nbsp;MB to it (leaving headroom for Wi-Fi/TLS buffers and heap fragmentation) gives roughly 42,000 rows, or <strong>~116 hours (~4.8 days)</strong> of Wi-Fi outage before the buffer fills and the oldest unsent rows start being dropped. A power loss still empties the queue, since it's RAM, not flash.</span>
+    </div>
+
+    <div class="callout">
+      <span class="tag">Decided</span>
+      <span>Mains-powered, so there's no reason to deep-sleep between sweeps — the ESP32-S3 stays awake with a persistent Wi-Fi connection and holds a fixed 10&nbsp;s wait between cycles, whether or not Wi-Fi is up, which comfortably tracks equipment/process temperatures without flooding the server. Under normal (connected) operation the backlog queue stays empty; it only fills during an actual outage.</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Bill of materials</h2></div>
+    <p class="sec-dek">Testing build — MAX31865 breakout modules instead of bare ICs, for faster bring-up before committing to a custom PCB.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Ref</th><th>Component</th><th>Qty</th><th>Interface</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><td colspan="5">Core electronics</td></tr>
+          <tr>
+            <td class="ref">U1</td>
+            <td class="part">ESP32-S3-WROOM-1-N8R2 module or dev board</td>
+            <td class="qty">1</td>
+            <td>SPI, GPIO, Wi-Fi</td>
+            <td class="note">8 MB flash, 2 MB PSRAM — SPI master, 9 chip-selects, NTP/Wi-Fi upload, PSRAM hosts the offline backlog queue</td>
+          </tr>
+          <tr>
+            <td class="ref">U2–U8</td>
+            <td class="part">MAX31865 breakout module (PT100 variant)</td>
+            <td class="qty">7</td>
+            <td>SPI</td>
+            <td class="note">R_REF (430Ω) and decoupling pre-populated on-board; set 3-wire mode via jumper/solder pad — check the board silkscreen for FORCE+/SENSE/FORCE− pin labels</td>
+          </tr>
+          <tr>
+            <td class="ref">U9</td>
+            <td class="part">MAX31865 breakout module (PT1000 variant)</td>
+            <td class="qty">1</td>
+            <td>SPI</td>
+            <td class="note">R_REF and decoupling pre-populated on-board (value as fitted — commonly 4300Ω on Adafruit-style PT1000 boards; the firmware constant must match the board); set 3-wire mode via jumper/solder pad — check the board silkscreen for FORCE+/SENSE/FORCE− pin labels</td>
+          </tr>
+          <tr>
+            <td class="ref">RT1–RT7</td>
+            <td class="part">PT100 RTD probe, 1 m 3-wire lead</td>
+            <td class="qty">7</td>
+            <td>3-wire, twisted/matched</td>
+            <td class="note">Class B or better; matched lead length both current legs</td>
+          </tr>
+          <tr>
+            <td class="ref">RT8</td>
+            <td class="part">PT1000 RTD probe, 1 m 3-wire lead</td>
+            <td class="qty">1</td>
+            <td>3-wire</td>
+            <td class="note">Reference / cross-check channel</td>
+          </tr>
+          <tr>
+            <td class="ref">RTC1</td>
+            <td class="part">DS3231 RTC module</td>
+            <td class="qty">1</td>
+            <td>I²C</td>
+            <td class="note">Optional — keeps timestamps correct without network/NTP; each row stores a full date+time (Unix epoch, uint32), formatted to ISO 8601 on upload</td>
+          </tr>
+
+          <tr class="group"><td colspan="5">Power &amp; passives</td></tr>
+          <tr>
+            <td class="ref">PS1</td>
+            <td class="part">5V supply + 3.3V LDO/buck regulator</td>
+            <td class="qty">1</td>
+            <td>—</td>
+            <td class="note">USB-C or DC jack in; most ESP32-S3 dev boards already regulate to 3.3V</td>
+          </tr>
+          <tr>
+            <td class="ref">C10</td>
+            <td class="part">10–47 µF bulk capacitor</td>
+            <td class="qty">1</td>
+            <td>—</td>
+            <td class="note">Across the ESP32-S3's main 3.3V rail — module supply pins already decoupled on-board</td>
+          </tr>
+
+          <tr class="group"><td colspan="5">Connectors &amp; wiring</td></tr>
+          <tr>
+            <td class="ref">J1–J8</td>
+            <td class="part">3-pos screw terminal block</td>
+            <td class="qty">8</td>
+            <td>—</td>
+            <td class="note">RTD field wiring, one per channel — 3 terminals for FORCE+/SENSE/FORCE− per probe</td>
+          </tr>
+          <tr>
+            <td class="ref">W1</td>
+            <td class="part">Hookup wire / jumper set</td>
+            <td class="qty">1 lot</td>
+            <td>SPI, I²C</td>
+            <td class="note">Shared SCK/MOSI/MISO + 8× CS between ESP32-S3 and MAX31865 boards, plus 3 conductors per RTD from each terminal block to its module</td>
+          </tr>
+          <tr>
+            <td class="ref">—</td>
+            <td class="part">Female headers / breadboard or perfboard</td>
+            <td class="qty">1 lot</td>
+            <td>—</td>
+            <td class="note">Mounts the 9 breakout modules for the test build</td>
+          </tr>
+
+          <tr class="group"><td colspan="5">Enclosure</td></tr>
+          <tr>
+            <td class="ref">ENC1</td>
+            <td class="part">Project enclosure</td>
+            <td class="qty">1</td>
+            <td>—</td>
+            <td class="note">Sized for ESP32-S3 + 8× MAX31865 boards + terminal blocks</td>
+          </tr>
+          <tr>
+            <td class="ref">CG1–CG8</td>
+            <td class="part">Cable gland</td>
+            <td class="qty">8</td>
+            <td>—</td>
+            <td class="note">Strain relief where each probe lead exits the enclosure</td>
+          </tr>
+          <tr>
+            <td class="ref">—</td>
+            <td class="part">Standoffs / mounting hardware</td>
+            <td class="qty">1 lot</td>
+            <td>—</td>
+            <td class="note">Secures PCB inside the enclosure</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="toollist">
+      <p class="label">Tools (not consumed into the build)</p>
+      <ul>
+        <li>Soldering iron + solder — unless using no-solder breakouts on a breadboard</li>
+        <li>Multimeter — verify RTD resistance and continuity before first power-up</li>
+        <li>USB-C cable — programming and powering the ESP32-S3</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <span class="tag">Production</span>
+      <span>This BOM is the breakout-module test build. Once the firmware is validated, a production run would swap the 8 modules for bare MAX31865 ICs, discrete R_REF resistors (430Ω ×7, 4020Ω ×1, 0.1%) and per-channel decoupling caps on a custom PCB — same electrical design, lower per-unit cost at volume.</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>Cloud upload payload</h2></div>
+    <p class="sec-dek">HTTPS POST, JSON body. One request per 10&nbsp;s cycle carrying the live reading plus, while draining a backlog, one queued row alongside it.</p>
+
+    <div class="codewrap">
+      <pre class="code"><span class="c">// POST /ingest  ·  Content-Type: application/json  ·  Authorization: Bearer &lt;device token&gt;</span>
+{
+  <span class="k">"device_id"</span>: <span class="s">"rtd-logger-01"</span>,
+  <span class="k">"fw_version"</span>: <span class="s">"1.0.0"</span>,
+  <span class="k">"readings"</span>: [
+    {
+      <span class="k">"ts"</span>: <span class="s">"2026-09-09T14:32:10Z"</span>,
+      <span class="k">"channels"</span>: [
+        { <span class="k">"ch"</span>: 1, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.31 },
+        { <span class="k">"ch"</span>: 2, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.28 },
+        { <span class="k">"ch"</span>: 3, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 23.97 },
+        { <span class="k">"ch"</span>: 4, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.05 },
+        { <span class="k">"ch"</span>: 5, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.19 },
+        { <span class="k">"ch"</span>: 6, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.02 },
+        { <span class="k">"ch"</span>: 7, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.11 },
+        { <span class="k">"ch"</span>: 8, <span class="k">"type"</span>: <span class="s">"PT1000"</span>, <span class="k">"temp_c"</span>: 24.09 }
+      ]
+    }
+    <span class="c">// a second "readings" entry appears here while a backlog is draining —</span>
+    <span class="c">// same shape, ts of the oldest queued row</span>
+  ]
+}</pre>
+    </div>
+
+    <div class="tablewrap fieldtable">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="ref">device_id</td>
+            <td class="part">string</td>
+            <td class="qty">yes</td>
+            <td class="note">Unique per logger unit — how the server tells multiple deployed units apart</td>
+          </tr>
+          <tr>
+            <td class="ref">fw_version</td>
+            <td class="part">string</td>
+            <td class="qty">yes</td>
+            <td class="note">Current firmware version — lets the server correlate readings with what's running, and target OTA pushes later</td>
+          </tr>
+          <tr>
+            <td class="ref">readings[]</td>
+            <td class="part">array</td>
+            <td class="qty">yes</td>
+            <td class="note">1 entry normally; 2 while a backlog row is riding along with the live one</td>
+          </tr>
+          <tr>
+            <td class="ref">readings[].ts</td>
+            <td class="part">string</td>
+            <td class="qty">yes</td>
+            <td class="note">ISO&nbsp;8601, UTC — the full date+time captured at commit time</td>
+          </tr>
+          <tr>
+            <td class="ref">readings[].channels[]</td>
+            <td class="part">array</td>
+            <td class="qty">yes</td>
+            <td class="note">Always 8 entries, ch 1–8 in fixed order</td>
+          </tr>
+          <tr>
+            <td class="ref">channels[].ch</td>
+            <td class="part">integer</td>
+            <td class="qty">yes</td>
+            <td class="note">1–8, matches the physical channel/terminal number</td>
+          </tr>
+          <tr>
+            <td class="ref">channels[].type</td>
+            <td class="part">string</td>
+            <td class="qty">yes</td>
+            <td class="note">"PT100" (ch 1–7) or "PT1000" (ch 8)</td>
+          </tr>
+          <tr>
+            <td class="ref">channels[].temp_c</td>
+            <td class="part">number</td>
+            <td class="qty">yes</td>
+            <td class="note">Degrees Celsius, 2 decimal places; <code>null</code> when the MAX31865 reports a fault on that channel</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <span class="tag">Note</span>
+      <span>The device sends <code>Authorization: Bearer &lt;device token&gt;</code>, which must match <code>RTD_API_TOKEN</code> on the server. A 2xx, 400, 413 or 422 reply tells the firmware to discard the rows it sent; 401, 5xx and timeouts make it keep them and retry. The server answers <code>{"accepted", "duplicates", "rejected"}</code>, and re-sent rows are de-duplicated by device and timestamp. <code>fw_version</code> is in the schema now so it's already there when OTA lands later.</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Hardware connections &amp; requirements</h2></div>
+    <p class="sec-dek">Pin map for the breakout-module test build. The GPIO numbers are a proposal that stays clear of the S3's strapping pins (0, 3, 45, 46), USB (19, 20), UART0 (43, 44) and flash/PSRAM pins (26–32); SPI sits on the FSPI (SPI2) IOMUX pins so it can run at full speed.</p>
+
+    <p class="subhead">ESP32-S3 ↔ modules</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Signal</th><th>ESP32-S3</th><th>Goes to</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><td colspan="4">Shared SPI bus</td></tr>
+          <tr><td class="ref">SCK</td><td class="pin">GPIO12</td><td>CLK on all 8 MAX31865 modules</td><td class="note">Star the wires out from the ESP32; keep each run short (under ~20&nbsp;cm on a breadboard)</td></tr>
+          <tr><td class="ref">MOSI</td><td class="pin">GPIO11</td><td>SDI on all 8 modules</td><td class="note">Module SDI = data into the MAX31865</td></tr>
+          <tr><td class="ref">MISO</td><td class="pin">GPIO13</td><td>SDO on all 8 modules</td><td class="note">SDO is high-impedance while CS is high, so sharing one MISO line is safe</td></tr>
+
+          <tr class="group"><td colspan="4">Chip selects — one per module, active low</td></tr>
+          <tr><td class="ref">CS1</td><td class="pin">GPIO4</td><td>U2 — ch 1, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS2</td><td class="pin">GPIO5</td><td>U3 — ch 2, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS3</td><td class="pin">GPIO6</td><td>U4 — ch 3, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS4</td><td class="pin">GPIO7</td><td>U5 — ch 4, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS5</td><td class="pin">GPIO15</td><td>U6 — ch 5, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS6</td><td class="pin">GPIO16</td><td>U7 — ch 6, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS7</td><td class="pin">GPIO17</td><td>U8 — ch 7, PT100</td><td class="note"></td></tr>
+          <tr><td class="ref">CS8</td><td class="pin">GPIO18</td><td>U9 — ch 8, PT1000</td><td class="note">Matches the <code>ch</code>/<code>type</code> order in the cloud payload</td></tr>
+
+          <tr class="group"><td colspan="4">RTC (I²C)</td></tr>
+          <tr><td class="ref">SDA</td><td class="pin">GPIO8</td><td>DS3231 SDA</td><td class="note">DS3231 modules carry their own pull-ups</td></tr>
+          <tr><td class="ref">SCL</td><td class="pin">GPIO9</td><td>DS3231 SCL</td><td class="note">SQW/32K pins unused</td></tr>
+
+          <tr class="group"><td colspan="4">Power</td></tr>
+          <tr><td class="ref">3V3</td><td class="pin">3V3</td><td>VIN on all 8 modules, DS3231 VCC</td><td class="note">Powering the modules from 3.3&nbsp;V keeps every logic level at 3.3&nbsp;V; add the 10–47&nbsp;µF bulk cap at the ESP32</td></tr>
+          <tr><td class="ref">GND</td><td class="pin">GND</td><td>GND on every module and the RTC</td><td class="note">Single common ground; join it to the supply return at one point</td></tr>
+
+          <tr class="group"><td colspan="4">Not connected</td></tr>
+          <tr><td class="ref">RDY</td><td class="pin">—</td><td>DRDY on each module</td><td class="note">Optional. Firmware waits a fixed conversion time instead; wire to spare GPIOs later if you want interrupt-driven reads</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="subhead">RTD field wiring — repeat for each of J1–J8</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Terminal block</th><th>Module terminal</th><th>RTD lead</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="ref">Jn-1</td><td class="pin">F+</td><td>First lead of the matched pair (typically red)</td><td class="note">Force current out to the RTD</td></tr>
+          <tr><td class="ref">Jn-2</td><td class="pin">RTD+</td><td>Second lead of the matched pair (typically red)</td><td class="note">Sense line — the two same-colour leads are what lets the chip subtract lead resistance</td></tr>
+          <tr><td class="ref">Jn-3</td><td class="pin">RTD−</td><td>The odd-colour lead (typically white)</td><td class="note">F− is tied to RTD− by the module's 3-wire jumper</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sec-dek" style="margin-top:12px;">Set each module's 2/3/4-wire solder jumpers to 3-wire before first power-up, and follow the module's own guide if its terminal order differs from the above.</p>
+
+    <p class="subhead">Requirements</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Requirement</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="ref">Supply</td><td class="part">5&nbsp;V DC, 1&nbsp;A minimum (2&nbsp;A preferred)</td><td class="note">Wi-Fi transmit bursts on the ESP32-S3 reach several hundred mA; the 8 modules and RTC add only tens of mA</td></tr>
+          <tr><td class="ref">3.3&nbsp;V rail</td><td class="part">600&nbsp;mA or more</td><td class="note">A typical dev-board regulator is enough; don't power the rail from a USB data port with a thin cable</td></tr>
+          <tr><td class="ref">Logic level</td><td class="part">3.3&nbsp;V everywhere</td><td class="note">ESP32-S3 GPIOs are not 5&nbsp;V tolerant</td></tr>
+          <tr><td class="ref">SPI</td><td class="part">Mode 1 or 3, MSB first, 1–5&nbsp;MHz</td><td class="note">MAX31865 supports only those modes; 1&nbsp;MHz is plenty for 8 modules</td></tr>
+          <tr><td class="ref">Conversion</td><td class="part">One-shot per read, ≈65&nbsp;ms each, bias off between reads</td><td class="note">A full 8-channel sweep takes about 0.5&nbsp;s inside the 10&nbsp;s cycle, and the RTD is not self-heated between reads</td></tr>
+          <tr><td class="ref">Mains filter</td><td class="part">Set to 50&nbsp;Hz or 60&nbsp;Hz to match the local supply</td><td class="note">Rejects mains pickup on the RTD inputs</td></tr>
+          <tr><td class="ref">R_REF in firmware</td><td class="part">Use the value actually fitted on each module</td><td class="note">A wrong reference resistor value scales every temperature reading</td></tr>
+          <tr><td class="ref">RTD cable</td><td class="part">3 conductors, same gauge and length, twisted; shielded near motors or mains</td><td class="note">Matched conductors are what make 3-wire compensation work; ground the shield at the module end only</td></tr>
+          <tr><td class="ref">Layout</td><td class="part">Keep RTD wiring away from the SPI clock and Wi-Fi antenna</td><td class="note">PT100 changes only 0.385&nbsp;Ω/°C, so small coupled noise shows up as temperature error</td></tr>
+          <tr><td class="ref">Network</td><td class="part">2.4&nbsp;GHz Wi-Fi with outbound HTTPS (443) and NTP (UDP 123)</td><td class="note">The ESP32-S3 has no 5&nbsp;GHz radio; both the daily time sync and cloud upload need internet access</td></tr>
+          <tr><td class="ref">Flash layout</td><td class="part">Partition table with two app slots + otadata from day one</td><td class="note">OTA isn't built yet, but reserving the partitions now avoids a reflash-over-USB when it lands</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span>RTD-LOGGER-01 · draft spec</span>
+    <span>8 ch · ±0.5 °C target · ESP32-S3 + MAX31865</span>
+  </footer>
+
+</div>
