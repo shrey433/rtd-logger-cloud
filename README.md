@@ -9,7 +9,7 @@ Firmware, ingest API and dashboard for the 8-channel RTD temperature logger (ESP
 The sections below cover the cloud server.
 
 - **MQTT in:** loggers publish one reading per message to `rtd/<device_id>/telemetry`; the app subscribes with QoS 1 and acknowledges a message only after it is stored
-- `POST /ingest` takes the same readings over HTTPS (device token required); kept for testing and for firmware that doesn't speak MQTT yet
+- `POST /ingest` takes the same readings over HTTPS (bearer token required); the firmware now uses MQTT, so this is kept for testing
 - `GET /` is the dashboard: tiles and chart update the moment a reading arrives (server-sent events from `/api/stream`), with gaps for outages, latest readings, and CSV export
 - SQLite storage, one wide row per device per timestamp, so a backlog re-sent after a Wi-Fi outage is de-duplicated
 
@@ -44,7 +44,7 @@ See `.env.example` and `deploy/.env.example`.
 
 ## Deploying
 
-`deploy/` holds a Docker Compose setup (the app plus Caddy for automatic HTTPS) and `aws_iot_setup.py`, which creates the IoT Core things, certificates and policies. `deploy/AWS_SETUP.md` has the steps for AWS IoT Core plus one Lightsail server. Whatever host you use, two things matter:
+`deploy/` holds a Docker Compose setup (the app plus Caddy for automatic HTTPS) and `aws_iot_setup.py`, which creates the IoT Core things, certificates and policies. `deploy/AWS_SETUP.md` has the steps for AWS IoT Core plus one EC2 server. Whatever host you use, two things matter:
 
 1. **Keep the `/data` volume.** SQLite is a file; without a persistent volume every redeploy wipes the history.
 2. **Serve it over HTTPS.** The dashboard password travels in a header, and the live stream needs a proxy that doesn't buffer (Caddy's `flush_interval -1`, as configured).
@@ -53,19 +53,20 @@ At 10 s sampling a device adds about 260k rows a month, which SQLite handles com
 
 ## Payload
 
+An MQTT message on `rtd/<device_id>/telemetry` (QoS 1), one reading per message. The device id comes from the topic, and the IoT policy only lets a certificate publish to its own topic.
+
 ```json
 {
-  "device_id": "rtd-logger-01",
   "fw_version": "0.1.0",
-  "readings": [
-    { "ts": "2026-10-07T12:19:20Z",
-      "channels": [ { "ch": 1, "type": "PT100", "temp_c": 21.70 }, "... ch 2 to 8 ..." ] }
-  ]
+  "backlog": 0,
+  "ts": "2026-10-07T12:19:20Z",
+  "channels": [ { "ch": 1, "type": "PT100", "temp_c": 21.70 }, "... ch 2 to 8 ..." ]
 }
 ```
 
-- `readings` holds 1 to 50 entries; the firmware sends the live row plus at most one backlog row.
 - `backlog` (optional) is how many rows are still queued on the device. The dashboard shows it as "Device queue" with the time left to catch up.
 - `temp_c` is `null` when the MAX31865 reports a fault, and values outside -200 to 850 °C are stored as null.
-- A reading with a timestamp before 2024 or more than a day ahead is counted under `rejected` rather than failing the request, so one bad row can never block the device's backlog.
-- Response: `{"accepted": n, "duplicates": n, "rejected": n}`. Anything 2xx, or a 400/422, tells the firmware to drop the rows it sent; 401, 5xx and timeouts make it keep and retry them.
+- A reading with a timestamp before 2024 or more than a day ahead is discarded rather than stored, so one bad row can never block the device's backlog. Malformed messages are acknowledged and dropped for the same reason; a message is left unacknowledged only if storing it failed, so the broker sends it again.
+- The broker's PUBACK is what the firmware treats as delivered. Re-sent rows are de-duplicated by device and timestamp.
+
+The HTTPS `POST /ingest` endpoint takes the same readings wrapped as `{"device_id", "fw_version", "backlog", "readings": [ ... up to 50 ... ]}` with `Authorization: Bearer <RTD_API_TOKEN>`, and answers `{"accepted", "duplicates", "rejected"}`.

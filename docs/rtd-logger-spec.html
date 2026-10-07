@@ -428,7 +428,7 @@
 
           <!-- decision -->
           <polygon points="320,440 400,478 320,516 240,478" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <text x="320" y="474" text-anchor="middle" font-size="11">Wi-Fi</text>
+          <text x="320" y="474" text-anchor="middle" font-size="11">MQTT</text>
           <text x="320" y="488" text-anchor="middle" font-size="11">connected?</text>
 
           <line x1="400" y1="478" x2="470" y2="478" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
@@ -463,7 +463,7 @@
         </defs>
       </svg>
     </figure>
-    <figcaption>Every wake cycle sweeps all eight channels, queues the row in RAM, then — if Wi-Fi is up — sends that live row plus one oldest backlogged row per cycle, so a reconnect catches up gradually instead of flooding the server. A separate background task resyncs NTP once every 24 hours to keep the DS3231 from drifting, independent of the 10&nbsp;s sample loop.</figcaption>
+    <figcaption>Every wake cycle sweeps all eight channels, then — if the MQTT session is up — publishes that live row plus one oldest backlogged row per cycle (each acknowledged by the broker), otherwise queues it in RAM and flash, so a reconnect catches up gradually instead of flooding the server. A separate background task resyncs NTP once every 24 hours to keep the DS3231 from drifting, independent of the 10&nbsp;s sample loop.</figcaption>
 
     <div class="callout">
       <span class="tag">Backlog capacity</span>
@@ -612,30 +612,23 @@
 
   <section>
     <div class="sec-head"><span class="sec-num">04</span><h2>Cloud upload payload</h2></div>
-    <p class="sec-dek">HTTPS POST, JSON body. One request per 10&nbsp;s cycle carrying the live reading plus, while draining a backlog, one queued row alongside it.</p>
+    <p class="sec-dek">MQTT over TLS to AWS IoT Core, QoS&nbsp;1. One message per reading on the topic <code>rtd/&lt;device_id&gt;/telemetry</code>: each 10&nbsp;s cycle sends the live reading and, while draining a backlog, one queued reading as a second message.</p>
 
     <div class="codewrap">
-      <pre class="code"><span class="c">// POST /ingest  ·  Content-Type: application/json  ·  Authorization: Bearer &lt;device token&gt;</span>
+      <pre class="code"><span class="c">// topic rtd/rtd-logger-01/telemetry  ·  QoS 1  ·  JSON  ·  client certificate of the thing "rtd-logger-01"</span>
 {
-  <span class="k">"device_id"</span>: <span class="s">"rtd-logger-01"</span>,
   <span class="k">"fw_version"</span>: <span class="s">"1.0.0"</span>,
   <span class="k">"backlog"</span>: 0,
-  <span class="k">"readings"</span>: [
-    {
-      <span class="k">"ts"</span>: <span class="s">"2026-09-09T14:32:10Z"</span>,
-      <span class="k">"channels"</span>: [
-        { <span class="k">"ch"</span>: 1, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.31 },
-        { <span class="k">"ch"</span>: 2, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.28 },
-        { <span class="k">"ch"</span>: 3, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 23.97 },
-        { <span class="k">"ch"</span>: 4, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.05 },
-        { <span class="k">"ch"</span>: 5, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.19 },
-        { <span class="k">"ch"</span>: 6, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.02 },
-        { <span class="k">"ch"</span>: 7, <span class="k">"type"</span>: <span class="s">"PT100"</span>,  <span class="k">"temp_c"</span>: 24.11 },
-        { <span class="k">"ch"</span>: 8, <span class="k">"type"</span>: <span class="s">"PT1000"</span>, <span class="k">"temp_c"</span>: 24.09 }
-      ]
-    }
-    <span class="c">// a second "readings" entry appears here while a backlog is draining —</span>
-    <span class="c">// same shape, ts of the oldest queued row</span>
+  <span class="k">"ts"</span>: <span class="s">"2026-09-09T14:32:10Z"</span>,
+  <span class="k">"channels"</span>: [
+        { <span class="k">"ch"</span>: 1, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.31 },
+        { <span class="k">"ch"</span>: 2, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.28 },
+        { <span class="k">"ch"</span>: 3, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 23.97 },
+        { <span class="k">"ch"</span>: 4, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.05 },
+        { <span class="k">"ch"</span>: 5, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.19 },
+        { <span class="k">"ch"</span>: 6, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.02 },
+        { <span class="k">"ch"</span>: 7, <span class="k">"type"</span>: <span class="s">"PT100"</span>,   <span class="k">"temp_c"</span>: 24.11 },
+        { <span class="k">"ch"</span>: 8, <span class="k">"type"</span>: <span class="s">"PT1000"</span>,  <span class="k">"temp_c"</span>: 24.09 }
   ]
 }</pre>
     </div>
@@ -647,10 +640,10 @@
         </thead>
         <tbody>
           <tr>
-            <td class="ref">device_id</td>
+            <td class="ref">topic</td>
             <td class="part">string</td>
             <td class="qty">yes</td>
-            <td class="note">Unique per logger unit — how the server tells multiple deployed units apart</td>
+            <td class="note"><code>rtd/&lt;device_id&gt;/telemetry</code>. The device id is taken from the topic, never from the body, and the IoT policy only lets a certificate publish to its own topic</td>
           </tr>
           <tr>
             <td class="ref">fw_version</td>
@@ -662,22 +655,16 @@
             <td class="ref">backlog</td>
             <td class="part">integer</td>
             <td class="qty">no</td>
-            <td class="note">Rows still queued on the device once this upload succeeds; the dashboard shows it and the time left to catch up</td>
+            <td class="note">Rows still queued on the device once this message is delivered; the dashboard shows it and the time left to catch up</td>
           </tr>
           <tr>
-            <td class="ref">readings[]</td>
-            <td class="part">array</td>
-            <td class="qty">yes</td>
-            <td class="note">1 entry normally; 2 while a backlog row is riding along with the live one</td>
-          </tr>
-          <tr>
-            <td class="ref">readings[].ts</td>
+            <td class="ref">ts</td>
             <td class="part">string</td>
             <td class="qty">yes</td>
-            <td class="note">ISO&nbsp;8601, UTC — the full date+time captured at commit time</td>
+            <td class="note">ISO&nbsp;8601, UTC — the full date+time the row was sampled; a backlog row keeps its original time</td>
           </tr>
           <tr>
-            <td class="ref">readings[].channels[]</td>
+            <td class="ref">channels[]</td>
             <td class="part">array</td>
             <td class="qty">yes</td>
             <td class="note">Always 8 entries, ch 1–8 in fixed order</td>
@@ -705,8 +692,8 @@
     </div>
 
     <div class="callout">
-      <span class="tag">Note</span>
-      <span>The device sends <code>Authorization: Bearer &lt;device token&gt;</code>, which must match <code>RTD_API_TOKEN</code> on the server. A 2xx, 400, 413 or 422 reply tells the firmware to discard the rows it sent; 401, 5xx and timeouts make it keep them and retry. The server answers <code>{"accepted", "duplicates", "rejected"}</code>, and re-sent rows are de-duplicated by device and timestamp. <code>fw_version</code> is in the schema now so it's already there when OTA lands later.</span>
+      <span class="tag">Delivery</span>
+      <span>The broker's PUBACK is the "delivered" signal: the firmware drops a row from its queue (RAM and flash) only after it, and otherwise keeps it and sends it again. The server stores each row once, de-duplicated by device and timestamp, so a re-send is harmless; it acknowledges malformed messages too, so one bad row can never block the backlog, and it leaves a message unacknowledged only if storing it failed. A row timestamped before 2024 or more than a day ahead is discarded. <code>fw_version</code> is in the schema now so it's already there when OTA lands later. The server still has an HTTPS <code>/ingest</code> endpoint with a bearer token for testing.</span>
     </div>
   </section>
 
@@ -781,7 +768,7 @@
           <tr><td class="ref">R_REF in firmware</td><td class="part">Use the value actually fitted on each module</td><td class="note">A wrong reference resistor value scales every temperature reading</td></tr>
           <tr><td class="ref">RTD cable</td><td class="part">3 conductors, same gauge and length, twisted; shielded near motors or mains</td><td class="note">Matched conductors are what make 3-wire compensation work; ground the shield at the module end only</td></tr>
           <tr><td class="ref">Layout</td><td class="part">Keep RTD wiring away from the SPI clock and Wi-Fi antenna</td><td class="note">PT100 changes only 0.385&nbsp;Ω/°C, so small coupled noise shows up as temperature error</td></tr>
-          <tr><td class="ref">Network</td><td class="part">2.4&nbsp;GHz Wi-Fi with outbound HTTPS (443) and NTP (UDP 123)</td><td class="note">The ESP32-S3 has no 5&nbsp;GHz radio; both the daily time sync and cloud upload need internet access</td></tr>
+          <tr><td class="ref">Network</td><td class="part">2.4&nbsp;GHz Wi-Fi with outbound MQTT over TLS (TCP 8883) and NTP (UDP 123)</td><td class="note">The ESP32-S3 has no 5&nbsp;GHz radio; both the daily time sync and cloud upload need internet access</td></tr>
           <tr><td class="ref">Flash layout</td><td class="part">Partition table with two app slots + otadata from day one</td><td class="note">OTA isn't built yet, but reserving the partitions now avoids a reflash-over-USB when it lands</td></tr>
         </tbody>
       </table>

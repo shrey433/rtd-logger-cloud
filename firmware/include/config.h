@@ -24,10 +24,15 @@ constexpr float R_REF_PT100      = 430.0f;
 constexpr float R_REF_PT1000     = 4300.0f;
 constexpr int   MAINS_HZ         = 50;  // 50 or 60: sets the MAX31865 notch filter
 
+// ---- MQTT (AWS IoT Core) --------------------------------------------------------------------
+// The client id and topic come from DEVICE_ID, which must match the IoT thing name: the policy only
+// lets a device connect as itself and publish to rtd/<its name>/telemetry.
+constexpr int MQTT_PORT = 8883;
+
 // ---- Timing -------------------------------------------------------------------------------
 constexpr uint32_t SAMPLE_INTERVAL_MS = 10UL * 1000UL;
 constexpr uint32_t NTP_RESYNC_MS      = 24UL * 60UL * 60UL * 1000UL;
-constexpr uint32_t HTTP_TIMEOUT_MS    = 4000;
+constexpr uint32_t MQTT_ACK_TIMEOUT_MS = 4000;  // how long a publish waits for the broker's PUBACK
 constexpr uint32_t WIFI_RETRY_MS      = 30UL * 1000UL;
 constexpr const char* NTP_SERVER_1 = "pool.ntp.org";
 constexpr const char* NTP_SERVER_2 = "time.google.com";

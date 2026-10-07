@@ -71,24 +71,21 @@ static void runCycle() {
   int good = Sensors::sample(live);
 
   // The live row always goes out with the oldest backlogged row, so a reconnect catches up
-  // one row per cycle instead of flooding the server.
-  Reading batch[2];
-  size_t n = 0;
-  bool haveBacklog = false;
+  // one row per cycle instead of flooding the server. Each is its own acknowledged message.
   const char* outcome = "offline, queued";
 
-  if (WiFi.status() == WL_CONNECTED) {
-    haveBacklog = backlog.peekOldest(batch[0]);
-    if (haveBacklog) n = 1;
-    batch[n++] = live;
-    size_t left = backlog.size() - (haveBacklog ? 1 : 0);
-    Uploader::Result r = Uploader::post(batch, n, left);
-    if (r == Uploader::Result::Retry) {
+  if (Uploader::ready()) {
+    bool linkOk = true;
+    Reading oldest;
+    if (backlog.peekOldest(oldest)) {
+      if (Uploader::publish(oldest, backlog.size() - 1) == Uploader::Result::Ok) rowDelivered();
+      else linkOk = false;  // no point waiting for a second timeout on a dead link
+    }
+    if (linkOk && Uploader::publish(live, backlog.size()) == Uploader::Result::Ok) {
+      outcome = "sent";
+    } else {
       queueRow(live);
       outcome = "upload failed, queued";
-    } else {
-      if (haveBacklog) rowDelivered();
-      outcome = r == Uploader::Result::Ok ? "sent" : "dropped by server";
     }
   } else {
     queueRow(live);
@@ -119,6 +116,7 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   lastWifiAttemptMs = millis();
   TimeSync::startNtp();
+  Uploader::begin();
 
   nextSampleMs = millis();
 }
@@ -126,6 +124,7 @@ void setup() {
 void loop() {
   keepWifiUp();
   TimeSync::poll();
+  Uploader::poll();
 
   uint32_t now = millis();
   if ((int32_t)(now - nextSampleMs) >= 0) {
