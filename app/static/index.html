@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RTD Logger</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/vendor/uPlot.min.css">
+<style>
+  :root{
+    --bg:#eef0ea; --surface:#ffffff; --surface-2:#e4e7de;
+    --ink:#1b211d; --muted:#5c6660; --line:#ccd1c4; --line-strong:#9aa397;
+    --accent:#b9591f; --accent2:#2f6f6b;
+    --good:#2f7d4f; --warn:#9a6a14; --bad:#b4372a;
+    --s1:#2b6cb0; --s2:#d9822b; --s3:#2f8f5b; --s4:#c8452f;
+    --s5:#8a5bb8; --s6:#1e9bb0; --s7:#9a8a10; --s8:#1b211d;
+    --font-body:'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif;
+    --font-mono:'IBM Plex Mono',SFMono-Regular,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12181a; --surface:#182022; --surface-2:#1e2729;
+      --ink:#e7ece7; --muted:#93a19a; --line:#2b3436; --line-strong:#3c4749;
+      --accent:#e08a4f; --accent2:#58b3ac;
+      --good:#6fc98e; --warn:#e0b04f; --bad:#ef7a62;
+      --s1:#6aa8e8; --s2:#f0a550; --s3:#55c48a; --s4:#ef7a62;
+      --s5:#b794e0; --s6:#4fc7dc; --s7:#d6c443; --s8:#e7ece7;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);padding:0 20px 64px}
+  .wrap{max-width:1120px;margin:0 auto}
+  :focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+
+  header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;
+    padding:32px 0 18px;border-bottom:3px solid var(--ink)}
+  .eyebrow{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 8px}
+  h1{margin:0;font-size:clamp(24px,3.4vw,34px);line-height:1.1;letter-spacing:-.01em}
+  select#device{font:inherit;font-weight:600;color:inherit;background:transparent;border:0;
+    border-bottom:1px dashed var(--line-strong);padding:0 22px 2px 0;cursor:pointer;
+    appearance:none;-webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+    background-position:calc(100% - 9px) 55%,calc(100% - 4px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+  select#device option{font-size:16px;color:#1b211d}
+  .status{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--line-strong);
+    border-radius:99px;color:var(--ink);background:var(--surface);font-weight:500}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .pill[data-state=online] i{background:var(--good)}
+  .pill[data-state=stale] i{background:var(--warn)}
+  .pill[data-state=offline] i{background:var(--bad)}
+  #netwarn{display:none;color:var(--bad)}
+  #netwarn.on{display:inline}
+
+  .controls{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin:22px 0 16px}
+  .seg{display:inline-flex;border:1px solid var(--line-strong);background:var(--surface)}
+  .seg button{font:500 12.5px var(--font-mono);color:var(--muted);background:transparent;border:0;
+    border-right:1px solid var(--line);padding:8px 14px;cursor:pointer}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+  a.btn{font:500 12.5px var(--font-mono);color:var(--ink);text-decoration:none;padding:8px 14px;
+    border:1px solid var(--line-strong);background:var(--surface)}
+  a.btn:hover{border-color:var(--ink)}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 16px}
+  .tile{font:inherit;color:inherit;text-align:left;cursor:pointer;background:var(--surface);
+    border:1px solid var(--line);padding:13px 15px 12px;display:flex;flex-direction:column;gap:7px}
+  .tile:hover{border-color:var(--line-strong)}
+  .tile-top{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11.5px}
+  .swatch{width:10px;height:10px;border-radius:2px;background:var(--c);flex:none}
+  .tile .type{margin-left:auto;color:var(--muted);letter-spacing:.04em}
+  .val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:5px}
+  .val b{font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .val small{font-size:13px;color:var(--muted)}
+  .val .fault{font-size:15px;font-weight:600;color:var(--bad);letter-spacing:.06em}
+  .sub{display:flex;justify-content:space-between;gap:8px;font-family:var(--font-mono);font-size:11px;
+    color:var(--muted);font-variant-numeric:tabular-nums}
+  .tile[aria-pressed=false]{opacity:.45}
+  .tile[aria-pressed=false] .swatch{background:transparent;box-shadow:inset 0 0 0 1.5px var(--c)}
+
+  .card{background:var(--surface);border:1px solid var(--line);padding:16px 18px 12px;margin:0 0 16px}
+  .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  h2{font-size:15px;margin:0;font-weight:600}
+  .hint{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+  #readout{font-family:var(--font-mono);font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums}
+  #chart{width:100%}
+  .u-wrap{font-family:var(--font-mono)}
+  .u-select{background:rgba(47,111,107,.16)}
+  .chart-foot{display:flex;gap:22px;flex-wrap:wrap;padding-top:8px;margin-top:6px;border-top:1px solid var(--line);
+    font-family:var(--font-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .chart-foot b{color:var(--ink);font-weight:500}
+
+  .tablewrap{overflow-x:auto;margin:0 -4px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--font-mono);font-size:12px;
+    font-variant-numeric:tabular-nums}
+  th{font-weight:500;color:var(--muted);text-align:right;padding:7px 10px;border-bottom:1px solid var(--line-strong);
+    font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
+  td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:last-child td{border-bottom:0}
+  td.null{color:var(--bad)}
+
+  .empty{background:var(--surface);border:1px dashed var(--line-strong);padding:28px 26px;margin-top:28px}
+  .empty h2{font-size:18px;margin-bottom:8px}
+  .empty p{margin:0 0 14px;color:var(--muted);max-width:60ch;line-height:1.55}
+  .empty pre{margin:0;padding:14px 16px;background:var(--surface-2);overflow-x:auto;font:12px/1.6 var(--font-mono)}
+  footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;
+    gap:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+  [hidden]{display:none!important}
+
+  @media (max-width:820px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:420px){.val b{font-size:26px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">8-channel RTD logger</p>
+      <h1><select id="device" aria-label="Device"></select></h1>
+    </div>
+    <div class="status">
+      <span id="netwarn">server unreachable &middot; showing last data</span>
+      <span id="updated"></span>
+      <span class="pill" id="pill" data-state="offline"><i></i><span id="pilltext">Connecting</span></span>
+    </div>
+  </header>
+
+  <div id="empty" class="empty" hidden>
+    <h2>Waiting for the first reading</h2>
+    <p>No logger has reported in yet. Point the firmware's <code>SERVER_URL</code> and <code>DEVICE_TOKEN</code> at this server, or send a test reading to see this page fill in:</p>
+    <pre>python tools/simulate.py --url <span id="origin"></span> --token YOUR_TOKEN --backfill-hours 6 --live</pre>
+  </div>
+
+  <main id="main" hidden>
+    <div class="controls">
+      <div class="seg" id="ranges" role="group" aria-label="Time range"></div>
+      <a class="btn" id="export" href="#">Export CSV</a>
+    </div>
+
+    <section class="tiles" id="tiles" aria-label="Channels"></section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Temperature, all channels</h2>
+        <span id="readout"></span>
+        <span class="hint">drag to zoom &middot; double-click to reset &middot; click a channel to hide it</span>
+      </div>
+      <div id="chart"></div>
+      <div class="chart-foot">
+        <span>Spread now <b id="spread">&mdash;</b></span>
+        <span>Samples in range <b id="count">&mdash;</b></span>
+        <span>Resolution <b id="res">&mdash;</b></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Latest readings</h2><span class="hint">newest first &middot; local time</span></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer><span id="meta"></span><span id="clock"></span></footer>
+</div>
+
+<script src="/vendor/uPlot.iife.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  var CH = 8, REFRESH_MS = 10000;
+  var RANGES = [["1 h",3600],["6 h",21600],["24 h",86400],["7 d",604800],["30 d",2592000]];
+  var $ = function(s){ return document.querySelector(s); };
+  var css = function(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
+  var store = {
+    get: function(k, d){ try { var v = localStorage.getItem("rtd."+k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
+    set: function(k, v){ try { localStorage.setItem("rtd."+k, JSON.stringify(v)); } catch(e){} }
+  };
+
+  var state = {
+    device: store.get("device", null),
+    range: store.get("range", 21600),
+    hidden: new Set(store.get("hidden", [])),
+    types: [], data: null, step: 10, latest: null, previous: null, stats: null,
+    hover: null, zoomed: false, u: null, serverTime: 0
+  };
+
+  function fmt(v, d){ return v === null || v === undefined ? "—" : v.toFixed(d === undefined ? 2 : d); }
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  function hms(t){ var d = new Date(t*1000); return pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds()); }
+  function stamp(t){ var d = new Date(t*1000); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+hms(t); }
+  function ago(s){
+    if (s < 90) return Math.max(0, Math.round(s)) + " s ago";
+    if (s < 5400) return Math.round(s/60) + " min ago";
+    if (s < 172800) return Math.round(s/3600) + " h ago";
+    return Math.round(s/86400) + " d ago";
+  }
+  function getJSON(url){
+    return fetch(url, {cache:"no-store"}).then(function(r){
+      if (!r.ok) { var e = new Error(r.status); e.status = r.status; throw e; }
+      return r.json();
+    });
+  }
+
+  /* ---------- static pieces ---------- */
+  var tilesEl = $("#tiles");
+  for (var i = 0; i < CH; i++) {
+    var b = document.createElement("button");
+    b.className = "tile"; b.type = "button"; b.dataset.ch = i; b.setAttribute("aria-pressed", "true");
+    b.style.setProperty("--c", "var(--s"+(i+1)+")");
+    b.innerHTML = '<span class="tile-top"><i class="swatch"></i><span>CH '+(i+1)+'</span><span class="type"></span></span>' +
+      '<span class="val"><b>—</b><small>°C</small></span>' +
+      '<span class="sub"><span class="delta"></span><span class="range"></span></span>';
+    b.addEventListener("click", toggleSeries);
+    tilesEl.appendChild(b);
+  }
+  var th = '<th>Time</th>'; for (i = 1; i <= CH; i++) th += '<th>CH '+i+'</th>';
+  $("#thead").innerHTML = th;
+
+  var rangesEl = $("#ranges");
+  RANGES.forEach(function(r){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = r[0]; b.dataset.s = r[1];
+    b.addEventListener("click", function(){ state.range = r[1]; store.set("range", r[1]); state.zoomed = false; paintRanges(); refresh(); });
+    rangesEl.appendChild(b);
+  });
+  function paintRanges(){
+    Array.prototype.forEach.call(rangesEl.children, function(b){ b.setAttribute("aria-pressed", String(+b.dataset.s === state.range)); });
+  }
+  paintRanges();
+  $("#origin").textContent = location.origin;
+
+  function toggleSeries(e){
+    var i = +e.currentTarget.dataset.ch;
+    if (state.hidden.has(i)) state.hidden.delete(i); else state.hidden.add(i);
+    store.set("hidden", Array.from(state.hidden));
+    if (state.u) state.u.setSeries(i+1, {show: !state.hidden.has(i)});
+    paintTiles();
+  }
+
+  /* ---------- tiles ---------- */
+  function paintTiles(){
+    var idx = state.hover, d = state.data, cur, prev, hovering = idx !== null && d;
+    var tiles = tilesEl.children;
+    for (var i = 0; i < CH; i++) {
+      var t = tiles[i];
+      t.setAttribute("aria-pressed", String(!state.hidden.has(i)));
+      t.querySelector(".type").textContent = state.types[i] || "";
+      cur = hovering ? d[i+1][idx] : (state.latest ? state.latest.values[i] : null);
+      var val = t.querySelector(".val");
+      if (cur === null || cur === undefined) {
+        val.innerHTML = state.latest || hovering ? '<span class="fault">'+(hovering ? "—" : "FAULT")+'</span>' : '<b>—</b><small>°C</small>';
+      } else {
+        val.innerHTML = '<b>'+cur.toFixed(2)+'</b><small>°C</small>';
+      }
+      var delta = t.querySelector(".delta"), range = t.querySelector(".range");
+      if (hovering) { delta.textContent = ""; }
+      else if (state.latest && state.previous && state.latest.values[i] !== null && state.previous.values[i] !== null) {
+        var dv = state.latest.values[i] - state.previous.values[i];
+        delta.textContent = Math.abs(dv) < 0.005 ? "▬ 0.00" : (dv > 0 ? "▲ " : "▼ ") + Math.abs(dv).toFixed(2);
+      } else delta.textContent = "";
+      range.textContent = state.stats && state.stats.min[i] !== null ?
+        fmt(state.stats.min[i], 1) + " – " + fmt(state.stats.max[i], 1) : "";
+    }
+    $("#readout").textContent = hovering && d[0][idx] ? stamp(d[0][idx]) :
+      (state.latest ? "latest " + stamp(state.latest.ts) : "");
+  }
+
+  /* ---------- chart ---------- */
+  function withGaps(ts, ch, step){
+    var x = [], ys = ch.map(function(){ return []; });
+    for (var i = 0; i < ts.length; i++) {
+      if (i > 0 && ts[i] - ts[i-1] > step * 2.5) {
+        x.push(ts[i-1] + step);
+        ys.forEach(function(a){ a.push(null); });
+      }
+      x.push(ts[i]);
+      ch.forEach(function(a, k){ ys[k].push(a[i]); });
+    }
+    return [x].concat(ys);
+  }
+
+  function buildChart(data){
+    if (state.u) { state.u.destroy(); state.u = null; }
+    var host = $("#chart");
+    var axisCommon = function(){ return {
+      stroke: function(){ return css("--muted"); },
+      grid: {stroke: function(){ return css("--line"); }, width: 1},
+      ticks: {stroke: function(){ return css("--line-strong"); }, width: 1},
+      font: "11px 'IBM Plex Mono', monospace"
+    }; };
+    var series = [{}];
+    for (var i = 0; i < CH; i++) (function(i){
+      series.push({
+        label: "CH " + (i+1), show: !state.hidden.has(i), spanGaps: false,
+        stroke: function(){ return css("--s"+(i+1)); },
+        width: 1.6, dash: i === 7 ? [6, 4] : undefined, points: {show: false}
+      });
+    })(i);
+    var ax = axisCommon(), ay = axisCommon();
+    ay.size = 52;
+    ay.values = function(u, v){ return v.map(function(x){ return x.toFixed(1); }); };
+    state.u = new uPlot({
+      width: host.clientWidth, height: Math.max(280, Math.min(380, Math.round(host.clientWidth * 0.34))),
+      series: series, legend: {show: false},
+      scales: {y: {range: function(u, mn, mx){ var p = Math.max(0.3, (mx - mn) * 0.08); return [mn - p, mx + p]; }}},
+      axes: [ax, ay],
+      cursor: {drag: {x: true, y: false, setScale: true}, points: {size: 7}},
+      hooks: {
+        setCursor: [function(u){
+          var i = u.cursor.idx === undefined ? null : u.cursor.idx;
+          if (i !== state.hover) { state.hover = i; paintTiles(); }
+        }],
+        setScale: [function(u, key){
+          if (key !== "x" || !state.data) return;
+          var xs = state.data[0];
+          state.zoomed = u.scales.x.min > xs[0] + 1 || u.scales.x.max < xs[xs.length-1] - 1;
+        }]
+      }
+    }, data, host);
+  }
+
+  function drawChart(){
+    var data = state.data;
+    if (!state.u) buildChart(data);
+    else state.u.setData(data, !state.zoomed);
+  }
+  new ResizeObserver(function(){
+    if (state.u) state.u.setSize({width: $("#chart").clientWidth, height: state.u.height});
+  }).observe($("#chart"));
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(){
+    if (state.data) { state.u = (state.u && state.u.destroy(), null); drawChart(); }
+  });
+
+  /* ---------- table / status ---------- */
+  function paintTable(rows){
+    $("#tbody").innerHTML = rows.map(function(r){
+      return "<tr><td>" + stamp(r.ts) + "</td>" + r.values.map(function(v){
+        return v === null ? '<td class="null">fault</td>' : "<td>" + v.toFixed(2) + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+  }
+
+  function paintStatus(device){
+    var age = state.serverTime - device.last_seen, s = "online", label = "Online";
+    if (age > 300) { s = "offline"; label = "Offline · last seen " + ago(age); }
+    else if (age > 35) { s = "stale"; label = "Delayed · " + ago(age); }
+    $("#pill").dataset.state = s;
+    $("#pilltext").textContent = label;
+    $("#meta").textContent = device.device_id + "  ·  firmware " + (device.fw_version || "?") +
+      "  ·  first seen " + stamp(device.first_seen);
+  }
+
+  /* ---------- data loop ---------- */
+  function exportLink(){
+    var until = state.serverTime || Math.floor(Date.now()/1000);
+    $("#export").href = "/api/export.csv?" + new URLSearchParams({device_id: state.device, since: until - state.range, until: until});
+  }
+
+  function loadDevices(){
+    return getJSON("/api/devices").then(function(res){
+      var sel = $("#device");
+      state.serverTime = res.server_time;
+      if (!res.devices.length) { $("#empty").hidden = false; $("#main").hidden = true; paintOffline(); return false; }
+      sel.innerHTML = res.devices.map(function(d){ return '<option value="'+d.device_id+'">'+d.device_id+'</option>'; }).join("");
+      if (!res.devices.some(function(d){ return d.device_id === state.device; })) state.device = res.devices[0].device_id;
+      sel.value = state.device;
+      $("#empty").hidden = true; $("#main").hidden = false;
+      return true;
+    });
+  }
+  function paintOffline(){ $("#pill").dataset.state = "offline"; $("#pilltext").textContent = "No devices yet"; }
+
+  var busy = false;
+  function refresh(){
+    if (busy) return Promise.resolve();
+    busy = true;
+    return loadDevices().then(function(ok){
+      if (!ok) return;
+      return getJSON("/api/latest?" + new URLSearchParams({device_id: state.device})).then(function(l){
+        state.serverTime = l.server_time;
+        state.latest = l.latest; state.previous = l.previous; state.types = l.device.types;
+        paintStatus(l.device);
+        var q = new URLSearchParams({device_id: state.device, since: l.server_time - state.range, until: l.server_time, max_points: 1200});
+        return Promise.all([getJSON("/api/readings?" + q), getJSON("/api/recent?" + new URLSearchParams({device_id: state.device, n: 15}))]);
+      }).then(function(res){
+        var rd = res[0];
+        state.types = rd.types.length ? rd.types : state.types;
+        state.step = rd.bucket === 1 ? 10 : rd.bucket;
+        state.stats = rd.stats;
+        state.data = withGaps(rd.ts, rd.ch, state.step);
+        state.hover = null;
+        drawChart(); paintTiles(); paintTable(res[1].rows); exportLink();
+        $("#count").textContent = rd.count.toLocaleString();
+        $("#res").textContent = rd.bucket === 1 ? "raw, 10 s" : (rd.bucket >= 60 ? Math.round(rd.bucket/60) + " min" : rd.bucket + " s") + " average";
+        var last = state.latest, vals = last ? last.values.filter(function(v){ return v !== null; }) : [];
+        $("#spread").textContent = vals.length > 1 ? (Math.max.apply(null, vals) - Math.min.apply(null, vals)).toFixed(2) + " °C" : "—";
+        $("#updated").textContent = "updated " + hms(Date.now()/1000);
+        $("#netwarn").classList.remove("on");
+      });
+    }).catch(function(e){
+      if (e && e.status === 401) { location.reload(); return; }
+      $("#netwarn").classList.add("on");
+    }).then(function(){ busy = false; });
+  }
+
+  $("#device").addEventListener("change", function(e){
+    state.device = e.target.value; store.set("device", state.device); state.zoomed = false; refresh();
+  });
+  setInterval(function(){ if (!document.hidden) refresh(); }, REFRESH_MS);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) refresh(); });
+  setInterval(function(){ $("#clock").textContent = stamp(Date.now()/1000); }, 1000);
+  refresh();
+})();
+</script>
+</body>
+</html>
