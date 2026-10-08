@@ -46,6 +46,10 @@ The boot self-test prints, per channel, the raw ADC count, the MAX31865 fault bi
   PT100/PT1000 can produce (-200 to 850 °C: an unplugged probe pins the reading at full scale, about 430 Ω on a
   430 Ω reference, and a short reads near 0 Ω) or when the chip flags open leads (fault bits `0x38`). The serial log
   says `chN: no sensor detected` once when this starts and `sensor detected` when a probe is plugged in.
+- A module that **does not answer on SPI** (all zeros on the bus: a loose SCK/MOSI/MISO, 3V3, GND or CS wire, or an
+  unpowered module) is not an empty channel. It is sent as `null`, the serial log says `module not responding on SPI`,
+  and the self-test marks it `MODULE NOT RESPONDING`. A raw reading of 0 with no fault on every channel at once is the
+  signature of this.
 - Any other fault on a connected probe is still sent as `null`, so a real problem is not mistaken for a temperature.
 - 0.00 °C is also a real temperature (ice water), so an unplugged channel and a probe at exactly 0 °C look the same
   in the data. The `ok=n/8` count in the serial log is the number of channels with a working sensor.
