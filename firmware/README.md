@@ -16,7 +16,7 @@ Pick the environment that matches your module's memory. `esptool` tells you:
 The wrong choice builds and flashes, but the PSRAM is then not found and the offline queue shrinks to 1,500 rows.
 
 ```bash
-cp include/secrets.example.h include/secrets.h   # then fill in WIFI_SSID, WIFI_PASSWORD and MQTT_HOST
+cp include/secrets.example.h include/secrets.h   # then fill in MQTT_HOST (Wi-Fi is entered on the device, see below)
 # copy the device certificate files into certs/ (commands in certs/README.md)
 pio run -e esp32s3-n16r8 -t upload --upload-port COM8
 pio device monitor
@@ -37,6 +37,18 @@ CA file is not `AmazonRootCA1.pem`.
 - `R_REF_PT100` and `R_REF_PT1000` in `include/config.h` match the resistors actually fitted on your modules.
 - `MAINS_HZ` is 50 or 60 for your supply.
 - `certs/` holds the three files and `DEVICE_ID` equals the certificate's thing name (`rtd-logger-01`).
+
+## Wire mode per probe
+
+`CH_THREE_WIRE` in `include/config.h` must match each probe: `true` for a 3-wire probe, `false` for a 2-wire one
+(currently ch2, ch3 and ch5 are 2-wire). For a 2-wire probe, tie the module's F+ and RTD+ terminals together and F- and
+RTD- together. Checking a channel: run the diagnostic (`pio run -e diag-n16r8 -t upload`) and compare the two
+settings of its wire-mode test.
+
+- A **2-wire probe read in 3-wire mode comes out about three times too high** (a 111 Ω probe reads about 333 Ω, i.e.
+  660 °C). If a channel reads absurdly high, this is the first thing to check.
+- A **3-wire probe reads about the same in both modes** (the 3-wire reading a Ω or so lower, the lead resistance).
+- If **neither setting gives a sensible value**, the wiring or the probe is at fault, not the setting.
 
 ## Sensor readings
 
@@ -73,3 +85,19 @@ mounted the logger carries on with the RAM queue alone. Each message also carrie
 waiting on the device, which the dashboard shows.
 
 `partitions.csv` already reserves two app slots and `otadata`, so OTA can be added later without a USB reflash.
+
+## Wi-Fi setup
+
+The Wi-Fi name and password are not in the firmware. A device with nothing saved opens its own network,
+`RTD-Logger-XXXX` (the last digits come from the MAC address), with the password `WIFI_SETUP_PASSWORD` from
+`include/config.h` (`Logger01`; WPA2 needs at least 8 characters). Join it with a phone; the setup page opens by
+itself, or go to `http://192.168.4.1/`. Pick the network, enter its password, tap Connect. The page shows the progress
+(joining, getting an address) and, if it fails, the reason: wrong password, network not found / not 2.4 GHz, router
+refused, or no address. When it works it shows the dashboard link (`DASHBOARD_URL` in `config.h`); only someone who
+joined the setup network sees that page, and the dashboard still asks for its own login. The details are saved in
+flash only after a successful join.
+
+To move the device to another network, hold the BOOT button for 5 seconds: the saved Wi-Fi is erased and the setup
+network opens again. If the saved network is unreachable for 10 minutes the setup network also reopens (the saved
+details are kept and still retried). 2.4 GHz networks only. Without a DS3231 fitted the device needs internet for the
+time, so it starts sampling once it has joined a network.

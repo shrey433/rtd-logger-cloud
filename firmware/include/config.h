@@ -18,6 +18,11 @@ constexpr int PIN_CS[8] = {4, 5, 6, 7, 15, 16, 17, 18};  // CS1..CS8 -> channels
 // module: Adafruit-style boards use 430 ohm (PT100) and 4300 ohm (PT1000). The spec's bare-IC
 // design uses 4020 ohm for PT1000, so change this if you move to a custom board.
 constexpr bool  CH_IS_PT1000[8] = {false, false, false, false, false, false, false, true};
+// How the probe on each channel is wired: true for a 3-wire probe, false for a 2-wire (or 4-wire) probe.
+// This must match the probe. A 2-wire probe measured in 3-wire mode reads far too high (ch3 showed 662 C
+// instead of 29 C). For a 2-wire probe, set the entry to false and tie the module's F+ to RTD+ and F- to RTD-.
+// All eight probes are 3-wire now.
+constexpr bool  CH_THREE_WIRE[8] = {true, true, true, true, true, true, true, true};
 constexpr float R_NOMINAL_PT100  = 100.0f;
 constexpr float R_NOMINAL_PT1000 = 1000.0f;
 constexpr float R_REF_PT100      = 430.0f;
@@ -34,6 +39,14 @@ constexpr uint32_t SAMPLE_INTERVAL_MS = 10UL * 1000UL;
 constexpr uint32_t NTP_RESYNC_MS      = 24UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t MQTT_ACK_TIMEOUT_MS = 4000;  // how long a publish waits for the broker's PUBACK
 constexpr uint32_t WIFI_RETRY_MS      = 30UL * 1000UL;
+constexpr uint32_t WIFI_FALLBACK_MS   = 10UL * 60UL * 1000UL;  // saved network unreachable this long: reopen the setup network
+constexpr int      PIN_WIFI_RESET     = 0;                     // BOOT button; hold it to erase the saved Wi-Fi
+constexpr uint32_t WIFI_RESET_HOLD_MS = 5000;
+// Password of the "RTD-Logger-XXXX" setup network. A WPA2 password must be at least 8 characters, so "Logger" alone
+// is not accepted by the radio. Anyone who knows it can change this device's Wi-Fi, so treat it like a key.
+#define WIFI_SETUP_PASSWORD "Logger01"
+// Shown on the setup page once the device is online. The dashboard itself still asks for its own login.
+#define DASHBOARD_URL "https://15-252-251-176.sslip.io"
 constexpr const char* NTP_SERVER_1 = "pool.ntp.org";
 constexpr const char* NTP_SERVER_2 = "time.google.com";
 constexpr uint32_t MIN_VALID_EPOCH = 1704067200UL;  // 2024-01-01; anything older means "clock not set"

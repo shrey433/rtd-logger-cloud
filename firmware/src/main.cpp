@@ -7,17 +7,12 @@
 #include "Sensors.h"
 #include "TimeSync.h"
 #include "Uploader.h"
+#include "WifiSetup.h"
 #include "config.h"
-#if __has_include("secrets.h")
-#include "secrets.h"
-#else
-#error "Copy include/secrets.example.h to include/secrets.h and fill in Wi-Fi and server details"
-#endif
 
 static ReadingQueue backlog;
 static uint32_t nextRowId;
 static uint32_t nextSampleMs;
-static uint32_t lastWifiAttemptMs;
 
 static void initBacklog() {
   size_t cap = QUEUE_CAPACITY_INTERNAL;
@@ -46,17 +41,6 @@ static void rowDelivered() {
   if (!backlog.peekOldest(oldest)) return;
   backlog.popOldest();
   FlashBacklog::consumeThrough(oldest.id);
-}
-
-// WiFi's own auto-reconnect only covers a link that was up; this also recovers from a failed boot.
-static void keepWifiUp() {
-  if (WiFi.status() == WL_CONNECTED) return;
-  uint32_t now = millis();
-  if (now - lastWifiAttemptMs < WIFI_RETRY_MS) return;
-  lastWifiAttemptMs = now;
-  Serial.println("wifi: connecting");
-  WiFi.disconnect();
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
 static void runCycle() {
@@ -112,19 +96,7 @@ void setup() {
   Sensors::selfTest();
   TimeSync::begin();
 
-  WiFi.onEvent([](arduino_event_id_t event, arduino_event_info_t info) {
-    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP)
-      Serial.printf("wifi: connected to %s, ip %s\n", WIFI_SSID, WiFi.localIP().toString().c_str());
-    else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
-      Serial.printf("wifi: not connected (reason %d%s)\n", info.wifi_sta_disconnected.reason,
-                    info.wifi_sta_disconnected.reason == WIFI_REASON_NO_AP_FOUND
-                        ? ": network not seen, the ESP32 needs a 2.4 GHz network"
-                        : info.wifi_sta_disconnected.reason == WIFI_REASON_AUTH_FAIL ? ": wrong password" : "");
-  });
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lastWifiAttemptMs = millis();
+  WifiSetup::begin();  // saved network, or the setup page when there is none
   TimeSync::startNtp();
   Uploader::begin();
 
@@ -132,7 +104,7 @@ void setup() {
 }
 
 void loop() {
-  keepWifiUp();
+  WifiSetup::poll();
   TimeSync::poll();
   Uploader::poll();
 
